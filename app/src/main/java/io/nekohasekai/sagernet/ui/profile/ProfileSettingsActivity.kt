@@ -41,6 +41,7 @@ import io.nekohasekai.sagernet.ktx.*
 import io.nekohasekai.sagernet.ui.ThemedActivity
 import io.nekohasekai.sagernet.widget.ListListener
 import kotlinx.parcelize.Parcelize
+import moe.matsuri.nb4a.ui.showMaterialEditTextPreferenceDialog
 import kotlin.properties.Delegates
 
 @Suppress("UNCHECKED_CAST")
@@ -375,6 +376,7 @@ abstract class ProfileSettingsActivity<T : AbstractBean>(
             activity?.apply {
                 if (displayPreferenceDialog(preference)) return
             }
+            if (showMaterialEditTextPreferenceDialog(preference)) return
             super.onDisplayPreferenceDialog(preference)
         }
 

@@ -92,15 +92,14 @@ object GroupManager {
     suspend fun updateGroup(group: ProxyGroup) {
         SagerDatabase.groupDao.updateGroup(group)
         iterator { groupUpdated(group) }
-        if (group.type == GroupType.SUBSCRIPTION) {
-            SubscriptionUpdater.reconfigureUpdater()
-        }
+        SubscriptionUpdater.reconfigureUpdater()
     }
 
     suspend fun deleteGroup(groupId: Long) {
         SagerDatabase.groupDao.deleteById(groupId)
         SagerDatabase.proxyDao.deleteByGroup(groupId)
         iterator { groupRemoved(groupId) }
+        ensureFallbackGroup()
         SubscriptionUpdater.reconfigureUpdater()
     }
 
@@ -108,7 +107,27 @@ object GroupManager {
         SagerDatabase.groupDao.deleteGroup(group)
         SagerDatabase.proxyDao.deleteByGroup(group.map { it.id }.toLongArray())
         for (proxyGroup in group) iterator { groupRemoved(proxyGroup.id) }
+        ensureFallbackGroup()
         SubscriptionUpdater.reconfigureUpdater()
+    }
+
+    private suspend fun ensureFallbackGroup() {
+        val groups = SagerDatabase.groupDao.allGroups()
+        if (groups.isEmpty()) {
+            val group = ProxyGroup(ungrouped = true)
+            group.id = SagerDatabase.groupDao.createGroup(group)
+            DataStore.selectedGroup = group.id
+            iterator { groupAdd(group) }
+            return
+        }
+        if (groups.none { it.id == DataStore.selectedGroup }) {
+            DataStore.selectedGroup = groups[0].id
+        }
+    }
+
+    fun canDelete(groupId: Long): Boolean {
+        if (groupId <= 0L) return false
+        return SagerDatabase.groupDao.allGroups().size > 1
     }
 
 }

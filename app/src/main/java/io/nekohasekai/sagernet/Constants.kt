@@ -1,6 +1,7 @@
 package io.nekohasekai.sagernet
 
-const val CONNECTION_TEST_URL = "http://www.gstatic.com/generate_204"
+const val CONNECTION_TEST_URL = "https://www.gstatic.com/generate_204"
+const val CONNECTION_IP_RESOLVE_URL = "https://ipv4.ipleak.net/json/"
 
 object Key {
 
@@ -13,11 +14,20 @@ object Key {
 
     const val APP_EXPERT = "isExpert"
     const val APP_THEME = "appTheme"
+    const val CUSTOM_THEME_LIGHT = "customThemeLight"
+    const val CUSTOM_THEME_DARK = "customThemeDark"
+    const val CUSTOM_THEME_DYNAMIC_COLORS = "customThemeDynamicColors"
+    const val CUSTOM_THEME_HEADER_PRIMARY = "customThemeHeaderPrimary"
+    const val CUSTOM_THEME_STATS_BAR_PRIMARY = "customThemeStatsBarPrimary"
     const val NIGHT_THEME = "nightTheme"
+    const val APP_LANGUAGE = "appLanguage"
+    const val USE_TOOLBAR = "useToolbar"
+    const val SHOW_PROFILE_COUNT_ON_TABS = "showProfileCountOnTabs"
     const val SERVICE_MODE = "serviceMode"
     const val MODE_VPN = "vpn"
     const val MODE_PROXY = "proxy"
 
+    const val CERT_PROVIDER = "certProvider"
     const val GLOBAL_CUSTOM_CONFIG = "globalCustomConfig"
 
     const val REMOTE_DNS = "remoteDns"
@@ -30,6 +40,11 @@ object Key {
     const val PROXY_APPS = "proxyApps"
     const val BYPASS_MODE = "bypassMode"
     const val INDIVIDUAL = "individual"
+    const val TUN_UNRECOGNIZED_TRAFFIC = "tunUnrecognizedTraffic"
+    const val TUN_SYSTEM_DNS_TRAFFIC = "tunSystemDnsTraffic"
+    const val TUN_DNS_WHITELIST = "tunDnsWhitelist"
+    const val TUN_DOT_WHITELIST = "tunDotWhitelist"
+    const val TUN_DOH_WHITELIST = "tunDohWhitelist"
     const val METERED_NETWORK = "meteredNetwork"
 
     const val TRAFFIC_SNIFFING = "trafficSniffing"
@@ -40,21 +55,37 @@ object Key {
     const val CONCURRENT_DIAL = "concurrentDial"
 
     const val MIXED_PORT = "mixedPort"
+    const val MIXED_USERNAME = "mixedUsername"
+    const val MIXED_PASSWORD = "mixedPassword"
     const val ALLOW_ACCESS = "allowAccess"
     const val SPEED_INTERVAL = "speedInterval"
+    const val PROFILE_TRAFFIC_UPDATE_INTERVAL = "profileTrafficUpdateInterval"
     const val SHOW_DIRECT_SPEED = "showDirectSpeed"
 
     const val APPEND_HTTP_PROXY = "appendHttpProxy"
+
+    const val REQUIRE_PROXY_IN_VPN = "requireProxyInVPN"
     const val STRICT_ROUTE = "strictRoute"
 
     const val CONNECTION_TEST_URL = "connectionTestURL"
+    const val CONNECTION_IP_RESOLVE_URL = "connectionIPResolveURL"
+    const val CONNECTION_TEST_CONCURRENT = "connectionTestConcurrent"
     const val CONNECTION_TEST_TIMEOUT = "connectionTestTimeout"
+    const val CONNECTION_GROUP_TEST_TIMEOUT = "connectionGroupTestTimeout"
+    const val PROFILE_TEST_TYPE = "profileTestType"
+    const val GROUP_TEST_TYPE = "groupTestType"
 
+    const val NETWORK_CHANGE_RECONNECT = "networkChangeReconnect"
     const val NETWORK_CHANGE_RESET_CONNECTIONS = "networkChangeResetConnections"
+    const val WAKE_RECONNECT = "wakeReconnect"
     const val WAKE_RESET_CONNECTIONS = "wakeResetConnections"
     const val RULES_PROVIDER = "rulesProvider"
     const val LOG_LEVEL = "logLevel"
     const val LOG_BUF_SIZE = "logBufSize"
+    const val ENABLE_CORE_PROFILING = "enableCoreProfiling"
+    const val PERFORM_LIBCORE_GC_SWEEP = "performLibcoreGcSweep"
+    const val SAVE_CORE_PROFILER_SNAPSHOT = "saveCoreProfilerSnapshot"
+    const val DELETE_CORE_PROFILER_SNAPSHOT = "deleteCoreProfilerSnapshot"
     const val MTU = "mtu"
     const val ALWAYS_SHOW_ADDRESS = "alwaysShowAddress"
 
@@ -142,10 +173,14 @@ object Key {
     const val ROUTE_IP = "routeIP"
     const val ROUTE_PORT = "routePort"
     const val ROUTE_SOURCE_PORT = "routeSourcePort"
+    const val ROUTE_NETWORK_TYPE = "routeNetworkType"
+    const val ROUTE_WIFI_SSID = "routeWifiSsid"
+    const val ROUTE_WIFI_BSSID = "routeWifiBssid"
     const val ROUTE_NETWORK = "routeNetwork"
     const val ROUTE_SOURCE = "routeSource"
     const val ROUTE_PROTOCOL = "routeProtocol"
     const val ROUTE_RULESET = "routeRuleset"
+    const val ROUTE_CREATE_DNS_RULE = "routeCreateDnsRule"
     const val ROUTE_OUTBOUND = "routeOutbound"
     const val ROUTE_PACKAGES = "routePackages"
 
@@ -155,6 +190,7 @@ object Key {
     const val GROUP_IS_SELECTOR = "groupIsSelector"
     const val GROUP_FRONT_PROXY = "groupFrontProxy"
     const val GROUP_LANDING_PROXY = "groupLandingProxy"
+    const val GROUP_FORCE_UTLS = "groupForceUTLS"
 
     const val GROUP_SUBSCRIPTION = "groupSubscription"
     const val SUBSCRIPTION_LINK = "subscriptionLink"
@@ -167,16 +203,24 @@ object Key {
     const val SUBSCRIPTION_AUTO_UPDATE_DELAY = "subscriptionAutoUpdateDelay"
     const val SUBSCRIPTION_FILTER_MODE = "subscriptionFilterMode"
     const val SUBSCRIPTION_FILTER_REGEX = "subscriptionFilterRegex"
+    const val SUBSCRIPTION_HWID_ENABLED = "subscriptionHwidEnabled"
+    const val SUBSCRIPTION_SPOOF_APP = "subscriptionSpoofApp"
 
     //
 
     const val APP_TLS_VERSION = "appTLSVersion"
     const val ENABLE_CLASH_API = "enableClashAPI"
+    const val HIDE_CLASH_API = "hideClashAPI"
+    const val CLASH_API_SECRET = "clashApiSecret"
 
     const val ENABLE_TLS_FRAGMENT = "enableTLSFragment"
+    const val TRAFFIC_FRAGMENTATION = "trafficFragmentation"
 
     const val FRAGMENT_LENGTH = "fragmentLength"
     const val FRAGMENT_INTERVAL = "fragmentInterval"
+    const val EXCLAVE_FRAGMENT_METHOD = "exclaveFragmentMethod"
+    const val EXCLAVE_FRAGMENT_FOR_DIRECT = "exclaveFragmentForDirect"
+    const val BYEDPI_FRAGMENT_CLI = "byedpiFragmentCli"
 
     const val WEBDAV_SERVER = "webdavServer"
     const val WEBDAV_USERNAME = "webdavUsername"
@@ -190,6 +234,13 @@ object TunImplementation {
     const val GVISOR = 0
     const val SYSTEM = 1
     const val MIXED = 2
+}
+
+object CertProvider {
+    const val SYSTEM = 0
+    const val MOZILLA = 1
+    const val SYSTEM_AND_USER = 2
+    const val CHROME = 3
 }
 
 object IPv6Mode {
@@ -216,11 +267,30 @@ object SubscriptionFilterMode {
     const val EXCLUDE = 2
 }
 
+object TrafficFragmentation {
+    const val NONE = "none"
+    const val STARIFLY = "starifly"
+    const val EXCLAVE = "exclave"
+    const val BYEDPI = "byedpi"
+}
+
+object ExclaveFragmentationMethod {
+    const val TLS_RECORD_FRAGMENTATION = 0
+    const val TCP_SEGMENTATION = 1
+    const val TLS_RECORD_FRAGMENTATION_AND_TCP_SEGMENTATION = 2
+}
+
+object SpoofApp {
+    const val NONE = 0
+    const val HAPP = 1
+    const val V2RAY_TUN = 2
+}
+
 object Action {
     const val SERVICE = "io.nekohasekai.sagernet.SERVICE"
     const val CLOSE = "io.nekohasekai.sagernet.CLOSE"
     const val RELOAD = "io.nekohasekai.sagernet.RELOAD"
 
     // const val SWITCH_WAKE_LOCK = "io.nekohasekai.sagernet.SWITCH_WAKELOCK"
-    const val RESET_UPSTREAM_CONNECTIONS = "moe.nb4a.RESET_UPSTREAM_CONNECTIONS"
+    const val RESET_UPSTREAM_CONNECTIONS = "${BuildConfig.APPLICATION_ID}.RESET_UPSTREAM_CONNECTIONS"
 }

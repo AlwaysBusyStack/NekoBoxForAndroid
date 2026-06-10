@@ -3,18 +3,22 @@ package io.nekohasekai.sagernet.ui
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.TextView
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
-import com.google.android.material.appbar.AppBarLayout
+import com.google.android.material.color.DynamicColors
 import com.google.android.material.snackbar.Snackbar
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.database.DataStore
+import io.nekohasekai.sagernet.ktx.getColorAttr
+import io.nekohasekai.sagernet.utils.CustomTheme
 import io.nekohasekai.sagernet.utils.Theme
 
 abstract class ThemedActivity : AppCompatActivity {
@@ -31,29 +35,54 @@ abstract class ThemedActivity : AppCompatActivity {
         } else {
             Theme.applyDialog(this)
         }
+        CustomTheme.applyOverrideIfNeeded(this)
+        if (Theme.isMaterialYou() || CustomTheme.useDynamicColors()) {
+            DynamicColors.applyToActivityIfAvailable(this)
+        }
         Theme.applyNightTheme()
 
         super.onCreate(savedInstanceState)
 
         uiMode = resources.configuration.uiMode
         
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowCompat.setDecorFitsSystemWindows(window, false)
-            
+        if (!isDialog) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+            }
+
+            val useLightSystemBars = !Theme.usingNightMode()
             val insetController = WindowCompat.getInsetsController(window, window.decorView)
-            insetController.isAppearanceLightNavigationBars = !Theme.usingNightMode()
-            insetController.isAppearanceLightStatusBars = 
-                if (DataStore.appTheme == Theme.BLACK) !Theme.usingNightMode() else false
+            insetController.isAppearanceLightStatusBars = useLightSystemBars
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                insetController.isAppearanceLightNavigationBars = useLightSystemBars
+            }
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { _, insets ->
             val bars = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
-            findViewById<AppBarLayout>(R.id.appbar)?.apply {
+            findViewById<View>(R.id.appbar)?.apply {
                 updatePadding(top = bars.top)
             }
+            applyHeaderColors()
             insets
+        }
+    }
+
+    private fun applyHeaderColors() {
+        if (!Theme.isCustom() || !DataStore.customThemeHeaderPrimary) return
+        val backgroundColor = getColorAttr(R.attr.colorPrimary)
+        val contentColor = getColorAttr(R.attr.colorOnPrimary)
+        findViewById<View>(R.id.appbar)?.setBackgroundColor(backgroundColor)
+        findViewById<Toolbar>(R.id.toolbar)?.apply {
+            setBackgroundColor(backgroundColor)
+            setTitleTextColor(contentColor)
+            navigationIcon?.setTint(contentColor)
+            overflowIcon?.setTint(contentColor)
+            for (index in 0 until menu.size()) {
+                menu.getItem(index).icon?.setTint(contentColor)
+            }
         }
     }
 

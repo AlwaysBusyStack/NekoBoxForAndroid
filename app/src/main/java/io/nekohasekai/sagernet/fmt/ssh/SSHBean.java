@@ -79,6 +79,12 @@ public class SSHBean extends AbstractBean {
 
     @NotNull
     @Override
+    public String getHash() {
+        return buildTypedHash("ssh");
+    }
+
+    @NotNull
+    @Override
     public SSHBean clone() {
         return KryoConverters.deserialize(new SSHBean(), KryoConverters.serialize(this));
     }

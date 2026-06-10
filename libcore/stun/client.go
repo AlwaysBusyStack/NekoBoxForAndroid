@@ -78,7 +78,7 @@ func (c *Client) SetSoftwareName(name string) {
 
 // Discover contacts the STUN server and gets the response of NAT type, host
 // for UDP punching.
-func (c *Client) Discover() (NATType, *Host, error, bool) {
+func (c *Client) Discover() (nat NATType, host *Host, err error, fakeFullCone bool) {
 	if c.serverAddr == "" {
 		c.SetServerAddr(DefaultServerAddr)
 	}
@@ -94,12 +94,14 @@ func (c *Client) Discover() (NATType, *Host, error, bool) {
 		if err != nil {
 			return NATError, nil, err, false
 		}
-		defer conn.Close()
+		defer func() {
+			err = errors.Join(err, conn.Close())
+		}()
 	}
 	return c.discover(conn, serverUDPAddr)
 }
 
-func (c *Client) BehaviorTest() (*NATBehavior, error) {
+func (c *Client) BehaviorTest() (behavior *NATBehavior, err error) {
 	if c.serverAddr == "" {
 		c.SetServerAddr(DefaultServerAddr)
 	}
@@ -115,7 +117,9 @@ func (c *Client) BehaviorTest() (*NATBehavior, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer conn.Close()
+		defer func() {
+			err = errors.Join(err, conn.Close())
+		}()
 	}
 	return c.behaviorTest(conn, serverUDPAddr)
 }

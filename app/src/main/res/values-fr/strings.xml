@@ -44,7 +44,7 @@
     <string name="group_show_diff">Diff</string>
     <string name="group_updated">%s : %d proxys mis à jour</string>
     <string name="group_no_difference">%s : aucune différence</string>
-    <string name="group_status_proxies_subscription">%d proxys | Mis à jour le %s</string>
+    <string name="group_status_proxies_subscription">Mis à jour : %1$s\n%2$d proxys</string>
     <string name="group_status_proxies">%d proxys</string>
     <string name="group_status_empty_subscription">Pas encore mis à jour</string>
     <string name="group_status_empty">Groupe vide</string>
@@ -200,6 +200,7 @@
     <string name="ooc_warning">Notice</string>
     <string name="install_from_fdroid">Installer depuis F-Droid</string>
     <string name="subscription_update_message">Mise à jour de %s…</string>
+    <string name="subscription_update_timeout">La mise à jour de la souscription a expiré après %d secondes</string>
     <string name="group_order">Ordre</string>
     <string name="group_order_origin">Origine</string>
     <string name="tcp_connections">%d connexions TCP</string>

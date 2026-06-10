@@ -1,8 +1,8 @@
 package io.nekohasekai.sagernet.ui
 
 import android.os.Bundle
-import androidx.appcompat.app.AlertDialog
 import androidx.core.view.isVisible
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.databinding.LayoutStunBinding
 import io.nekohasekai.sagernet.ktx.onMainDispatcher
@@ -42,7 +42,7 @@ class StunActivity : ThemedActivity() {
                 }
             } catch (e: Exception) {
                 onMainDispatcher {
-                    AlertDialog.Builder(this@StunActivity)
+                    MaterialAlertDialogBuilder(this@StunActivity)
                         .setTitle(R.string.error_title)
                         .setMessage(e.readableMessage)
                         .setPositiveButton(android.R.string.ok) { _, _ ->

@@ -6,7 +6,6 @@ import io.nekohasekai.sagernet.database.ProxyEntity.Companion.TYPE_NEKO
 import io.nekohasekai.sagernet.fmt.AbstractBean
 import io.nekohasekai.sagernet.ktx.app
 import io.nekohasekai.sagernet.ktx.getColorAttr
-import moe.matsuri.nb4a.proxy.config.ConfigBean
 
 // Settings for all protocols, built-in or plugin
 object Protocols {
@@ -14,15 +13,10 @@ object Protocols {
     // Deduplication
 
     class Deduplication(
-        val bean: AbstractBean, val type: String
+        val bean: AbstractBean
     ) {
 
-        fun hash(): String {
-            if (bean is ConfigBean) {
-                return bean.config
-            }
-            return bean.serverAddress + bean.serverPort + type
-        }
+        fun hash(): String = bean.hash
 
         override fun hashCode(): Int {
             return hash().toByteArray().contentHashCode()
@@ -44,7 +38,7 @@ object Protocols {
     fun Context.getProtocolColor(type: Int): Int {
         return when (type) {
             TYPE_NEKO -> getColorAttr(android.R.attr.textColorPrimary)
-            else -> getColorAttr(R.attr.accentOrTextSecondary)
+            else -> getColorAttr(R.attr.colorPrimary)
         }
     }
 

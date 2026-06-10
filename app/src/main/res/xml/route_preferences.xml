@@ -19,51 +19,78 @@
         <EditTextPreference
             app:icon="@drawable/ic_baseline_domain_24"
             app:key="routeDomain"
-            app:title="domain"
+            app:title="@string/domain"
             app:useSimpleSummaryProvider="true" />
         <EditTextPreference
             app:icon="@drawable/ic_baseline_add_road_24"
             app:key="routeIP"
-            app:title="dst ip"
+            app:title="@string/destination_ip"
             app:useSimpleSummaryProvider="true" />
         <EditTextPreference
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             app:icon="@drawable/ic_maps_directions_boat"
             app:key="routePort"
-            app:title="dst port"
+            app:title="@string/destination_port"
             app:useSimpleSummaryProvider="true" />
         <EditTextPreference
             app:icon="@drawable/ic_baseline_local_bar_24"
             app:key="routeSource"
-            app:title="src ip"
+            app:title="@string/source_ip"
             app:useSimpleSummaryProvider="true" />
         <EditTextPreference
             app:icon="@drawable/ic_baseline_home_24"
             app:key="routeSourcePort"
-            app:title="src port"
+            app:title="@string/source_port"
             app:useSimpleSummaryProvider="true" />
         <EditTextPreference
             app:icon="@drawable/ic_baseline_rule_folder_24"
             app:key="routeRuleset"
             app:title="RuleSet(.srs)"
             app:useSimpleSummaryProvider="true" />
+        <moe.matsuri.nb4a.ui.MaterialMultiSelectListPreference
+            app:entries="@array/route_network_type_entry"
+            app:entryValues="@array/route_network_type_value"
+            app:icon="@drawable/baseline_public_24"
+            app:key="routeNetworkType"
+            app:title="@string/network_type"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            app:icon="@drawable/ic_baseline_home_24"
+            app:key="routeWifiSsid"
+            app:title="@string/wifi_ssid"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            app:icon="@drawable/ic_baseline_home_24"
+            app:key="routeWifiBssid"
+            app:title="@string/wifi_bssid"
+            app:useSimpleSummaryProvider="true" />
         <moe.matsuri.nb4a.ui.SimpleMenuPreference
             app:entries="@array/route_protocol_entry"
             app:entryValues="@array/route_protocol_value"
             app:icon="@drawable/ic_baseline_compare_arrows_24"
             app:key="routeNetwork"
-            app:title="network"
+            app:title="@string/network"
             app:useSimpleSummaryProvider="true" />
-        <EditTextPreference
+        <moe.matsuri.nb4a.ui.SimpleMenuPreference
+            app:entries="@array/route_sniff_protocol_entry"
+            app:entryValues="@array/route_sniff_protocol_value"
             app:icon="@drawable/ic_baseline_layers_24"
-            app:key="routeProtocol"
-            app:title="protocol"
+            app:key="routeProtocolSelector"
+            app:title="@string/protocol"
+            app:useSimpleSummaryProvider="true" />
+        <moe.matsuri.nb4a.ui.SimpleMenuPreference
+            app:defaultValue="1"
+            app:entries="@array/yes_no_entry"
+            app:entryValues="@array/yes_no_value"
+            app:icon="@drawable/ic_baseline_dns_24"
+            app:key="routeCreateDnsRule"
+            app:title="@string/create_dns_rule"
             app:useSimpleSummaryProvider="true" />
         <io.nekohasekai.sagernet.widget.OutboundPreference
             app:icon="@drawable/ic_hardware_router"
             app:key="routeOutbound"
-            app:title="outbound"
+            app:title="@string/outbound"
             app:useSimpleSummaryProvider="true" />
     </PreferenceCategory>
 </PreferenceScreen>

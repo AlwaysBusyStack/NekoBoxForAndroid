@@ -4,6 +4,7 @@ import android.database.sqlite.SQLiteCantOpenDatabaseException
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.aidl.TrafficData
 import io.nekohasekai.sagernet.fmt.AbstractBean
+import io.nekohasekai.sagernet.fmt.masterdns.deleteMasterDnsVPNProfileCache
 import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.app
 import io.nekohasekai.sagernet.ktx.applyDefaultValues
@@ -102,14 +103,22 @@ object ProfileManager {
     }
 
     suspend fun deleteProfile2(groupId: Long, profileId: Long) {
+        val profile = getProfile(profileId)
         if (SagerDatabase.proxyDao.deleteById(profileId) == 0) return
+        if (profile?.masterDnsVPNBean != null) {
+            deleteMasterDnsVPNProfileCache(profileId)
+        }
         if (DataStore.selectedProxy == profileId) {
             DataStore.selectedProxy = 0L
         }
     }
 
     suspend fun deleteProfile(groupId: Long, profileId: Long) {
+        val profile = getProfile(profileId)
         if (SagerDatabase.proxyDao.deleteById(profileId) == 0) return
+        if (profile?.masterDnsVPNBean != null) {
+            deleteMasterDnsVPNProfileCache(profileId)
+        }
         if (DataStore.selectedProxy == profileId) {
             DataStore.selectedProxy = 0L
         }
@@ -191,53 +200,124 @@ object ProfileManager {
             DataStore.rulesFirstCreate = true
             createRule(
                 RuleEntity(
+                    name = app.getString(R.string.route_opt_bypass_bittorrent),
+                    protocol = "bittorrent",
+                    outbound = -1,
+                    enabled = true
+                )
+            )
+            createRule(
+                RuleEntity(
                     name = app.getString(R.string.route_opt_block_quic),
                     port = "443",
                     network = "udp",
-                    outbound = -2
+                    outbound = -2,
+                    enabled = true
                 )
             )
             createRule(
                 RuleEntity(
                     name = app.getString(R.string.route_opt_block_ads),
                     domains = "geosite:category-ads-all",
-                    outbound = -2
+                    outbound = -2,
+                    enabled = true
                 )
             )
-            val fuckedCountry = mutableListOf("cn:中国")
-            if (Locale.getDefault().country != Locale.CHINA.country) {
-                // 非中文用户
-                fuckedCountry += "ir:Iran"
-                fuckedCountry += "ru:Russia"
+
+            val countryRules = getCountryRulesForFirstRun()
+
+            for (rule in countryRules) {
+                rule.enabled = true
+                createRule(rule, false)
             }
-            for (c in fuckedCountry) {
-                val country = c.substringBefore(":")
-                val displayCountry = c.substringAfter(":")
-                //
-                if (country == "cn") createRule(
-                    RuleEntity(
-                        name = app.getString(R.string.route_play_store, displayCountry),
-                        domains = "domain:googleapis.cn\ndomain:xn--ngstr-lra8j.com\ndomain:xn--ngstr-cn-8za9o.com",
-                    ), false
-                )
-                createRule(
-                    RuleEntity(
-                        name = app.getString(R.string.route_bypass_domain, displayCountry),
-                        domains = "geosite:$country",
-                        outbound = -1
-                    ), false
-                )
-                createRule(
-                    RuleEntity(
-                        name = app.getString(R.string.route_bypass_ip, displayCountry),
-                        ip = "geoip:$country",
-                        outbound = -1
-                    ), false
-                )
-            }
+
             rules = SagerDatabase.rulesDao.allRules()
         }
         return rules
     }
 
+    private suspend fun getCountryRulesForFirstRun(): List<RuleEntity> {
+        return when (DataStore.firstRunRoutingRegion.takeIf { it.isNotBlank() } ?: Locale.getDefault().country.lowercase()) {
+            "cn" -> getChinaRules()
+            "ir" -> getIranRules()
+            "ru" -> getRussiaRules()
+            else -> listOf(getChinaRules(), getIranRules(), getRussiaRules()).flatten()
+        }
+    }
+
+    suspend fun getChinaRules(): List<RuleEntity> {
+        val displayCountry = "中国"
+
+        return listOf(
+            RuleEntity(
+                name = app.getString(R.string.route_play_store, displayCountry),
+                domains = listOf(
+                    "regexp:\\.googleapis.cn",
+                    "regexp:\\.xn--ngstr-lra8j.com",
+                    "regexp:\\.xn--ngstr-cn-8za9o.com"
+                ).joinToString("\n"),
+            ),
+            RuleEntity(
+                name = app.getString(R.string.route_bypass_domain, displayCountry),
+                domains = "geosite:cn",
+                outbound = -1
+            ),
+            RuleEntity(
+                name = app.getString(R.string.route_bypass_ip, displayCountry),
+                ip = "geoip:cn",
+                outbound = -1
+            )
+        )
+    }
+
+    suspend fun getIranRules(): List<RuleEntity> {
+        val displayCountry = "Iran"
+
+        return listOf(
+            RuleEntity(
+                name = app.getString(R.string.route_bypass_domain, displayCountry),
+                domains = "geosite:ir",
+                outbound = -1
+            ),
+            RuleEntity(
+                name = app.getString(R.string.route_bypass_ip, displayCountry),
+                ip = "geoip:ir",
+                outbound = -1
+            )
+        )
+    }
+
+    suspend fun getRussiaRules(): List<RuleEntity> {
+        val displayCountry = "Russia"
+
+        return listOf(
+            RuleEntity(
+                name = app.getString(R.string.route_bypass_domain, displayCountry),
+                domains = listOf(
+                    "geosite:category-ru",
+                    "geosite:category-gov-ru",
+                    "regexp:\\.ru$",
+                    "regexp:\\.su$",
+                    "regexp:\\.рф$",
+                    "regexp:\\.by$",
+                    "regexp:\\.ru.com$",
+                    "regexp:\\.ru.net$",
+                    "regexp:\\.moscow$",
+                    "regexp:\\.xn--p1ai$",
+                    "regexp:\\.xn--p1acf$",
+                    "regexp:\\.xn--80aswg$",
+                    "regexp:\\.xn--c1avg$",
+                    "regexp:\\.xn--80asehdb$",
+                    "regexp:\\.xn--d1acj3b$",
+                    "regexp:\\.xn--90ais$"
+                ).joinToString("\n"),
+                outbound = -1
+            ),
+            RuleEntity(
+                name = app.getString(R.string.route_bypass_ip, displayCountry),
+                ip = "geoip:ru",
+                outbound = -1
+            )
+        )
+    }
 }

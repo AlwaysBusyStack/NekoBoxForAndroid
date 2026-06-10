@@ -58,7 +58,7 @@
     <string name="group_show_diff">Forskjell</string>
     <string name="group_updated">%s: Oppdaterte %d mellomtjenere</string>
     <string name="group_no_difference">%s: Ingen forskjell</string>
-    <string name="group_status_proxies_subscription">%d mellomtjenere | Oppdatert %s</string>
+    <string name="group_status_proxies_subscription">Oppdatert: %1$s\n%2$d mellomtjenere</string>
     <string name="group_status_proxies">%d mellomtjenere</string>
     <string name="group_status_empty_subscription">Ikke oppdatert enda</string>
     <string name="group_status_empty">Tom gruppe</string>
@@ -115,6 +115,7 @@
     <string name="subscription_traffic">%s Brukt / %s Gjenstår</string>
     <string name="subscription_used">%s Brukt</string>
     <string name="subscription_update_message">Oppdaterer %s…</string>
+    <string name="subscription_update_timeout">Abonnementsoppdateringen fikk tidsavbrudd etter %d sekunder</string>
     <string name="subscription_update">Abonnementsoppdatering</string>
     <string name="service_subscription">Oppdateringstjeneste for abonnement</string>
     <string name="ooc_missing_protocol">Abonnementet krever støtte for protokoll %s, men det kan ikke bli funnet. Profiler som ikke støttes, blir ignorert.</string>
@@ -282,8 +283,8 @@
     <string name="connection_test_error_status_code">Feilkode: #%d</string>
     <string name="connection_test_fail">Internett utilgjengelig</string>
     <string name="connection_test_error">Mislyktes: %s</string>
-    <string name="connection_test_available_http">Suksess: HTTP håndtrykk tok %dms</string>
-    <string name="connection_test_available">Suksess: HTTPS håndtrykk tok %dms</string>
+    <string name="connection_test_available_http">Suksess: HTTP RTT tok %dms</string>
+    <string name="connection_test_available">Suksess: HTTPS RTT tok %dms</string>
     <string name="connection_test_testing">Tester…</string>
     <string name="speed_detail">Proxy： %1$s↑ %2$s↓
 \nDirekte： %3$s↑ %4$s↓</string>

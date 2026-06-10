@@ -89,6 +89,12 @@ public class AnyTLSBean extends AbstractBean {
 
     @NotNull
     @Override
+    public String getHash() {
+        return buildTypedHash("anytls");
+    }
+
+    @NotNull
+    @Override
     public AnyTLSBean clone() {
         return KryoConverters.deserialize(new AnyTLSBean(), KryoConverters.serialize(this));
     }

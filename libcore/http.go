@@ -24,6 +24,7 @@ import (
 
 	"github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/protocol/socks"
 	"github.com/sagernet/sing/protocol/socks/socks5"
@@ -39,6 +40,7 @@ type HTTPClient interface {
 	TrySocks5(port int32)
 	TryH3Direct()
 	KeepAlive()
+	SetTimeoutMillis(timeoutMillis int64)
 	NewRequest() HTTPRequest
 	Close()
 }
@@ -148,6 +150,10 @@ func (c *httpClient) KeepAlive() {
 	c.h1h2Transport.DisableKeepAlives = false
 }
 
+func (c *httpClient) SetTimeoutMillis(timeoutMillis int64) {
+	c.h1h2Client.Timeout = time.Duration(timeoutMillis) * time.Millisecond
+}
+
 func (c *httpClient) NewRequest() HTTPRequest {
 	req := &httpRequest{httpClient: c}
 	req.request = http.Request{
@@ -212,7 +218,7 @@ func (r *httpRequest) Execute() (HTTPResponse, error) {
 	if r.tryH3Direct && !r.trySocks5 {
 		return r.doH3Direct()
 	}
-	response, err := r.h1h2Client.Do(&r.request)
+	response, err := r.h1h2Client.Do(&r.request) //nolint:bodyclose // successful bodies are owned by the returned httpResponse.
 	if err != nil {
 		// trySocks5 && tryH3Direct
 		if r.tryH3Direct && errors.Is(err, errFailConnectSocks5) {
@@ -229,9 +235,35 @@ func (r *httpRequest) Execute() (HTTPResponse, error) {
 
 type requestFunc func() (response *http.Response, err error)
 
+type closeOnCloseReadCloser struct {
+	io.ReadCloser
+	closeFunc func() error
+	once      sync.Once
+}
+
+func (c *closeOnCloseReadCloser) Close() error {
+	var err error
+	c.once.Do(func() {
+		err = c.ReadCloser.Close()
+		if c.closeFunc != nil {
+			err = errors.Join(err, c.closeFunc())
+		}
+	})
+	return err
+}
+
 func (r *httpRequest) doH3Direct() (HTTPResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	timeout := r.h1h2Client.Timeout
+	if timeout == 0 {
+		timeout = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	cancelOnReturn := true
+	defer func() {
+		if cancelOnReturn {
+			cancel()
+		}
+	}()
 
 	successCh := make(chan *http.Response, 1)
 	var finalErr error
@@ -242,39 +274,65 @@ func (r *httpRequest) doH3Direct() (HTTPResponse, error) {
 	funcs := []requestFunc{
 		// Http(s) With Ech
 		func() (response *http.Response, err error) {
-			request := r.request.Clone(context.Background())
-			echClient := &http.Client{
-				Transport: &http.Transport{
-					DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-						var d net.Dialer
-						c, err := d.DialContext(ctx, network, addr)
-						if err != nil {
-							return c, err
-						}
-						domain := addr
-						if host, _, _ := net.SplitHostPort(addr); host != "" {
-							domain = host
-						}
-						echTls := ech.NewECHClientConfig(domain, &r.tls, gLocalDNSTransport)
-						return echTls.Client(ctx, c)
-					},
-					DisableKeepAlives: true,
+			request := r.request.Clone(ctx)
+			transport := &http.Transport{
+				DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					var d net.Dialer
+					c, err := d.DialContext(ctx, network, addr)
+					if err != nil {
+						return c, err
+					}
+					domain := addr
+					if host, _, splitErr := net.SplitHostPort(addr); splitErr == nil && host != "" {
+						domain = host
+					}
+					echTls := ech.NewECHClientConfig(domain, &r.tls, gLocalDNSTransport)
+					return echTls.Client(ctx, c)
 				},
+				DisableKeepAlives: true,
 			}
-			return echClient.Do(request)
+			echClient := &http.Client{
+				Transport: transport,
+			}
+			response, err = echClient.Do(request)
+			if err != nil {
+				transport.CloseIdleConnections()
+				return response, err
+			}
+			if response != nil && response.Body != nil {
+				response.Body = &closeOnCloseReadCloser{
+					ReadCloser: response.Body,
+					closeFunc: func() error {
+						transport.CloseIdleConnections()
+						return nil
+					},
+				}
+			}
+			return response, nil
 		},
 		// H3 HTTPS
 		func() (response *http.Response, err error) {
-			request := r.request.Clone(context.Background())
-			h3Client := &http.Client{
-				Transport: &http3.Transport{
-					TLSClientConfig: r.tls.Clone(),
-					QUICConfig: &quic.Config{
-						MaxIdleTimeout: time.Second,
-					},
+			request := r.request.Clone(ctx)
+			transport := &http3.Transport{
+				TLSClientConfig: r.tls.Clone(),
+				QUICConfig: &quic.Config{
+					MaxIdleTimeout: time.Second,
 				},
 			}
-			return h3Client.Do(request)
+			h3Client := &http.Client{
+				Transport: transport,
+			}
+			response, err = h3Client.Do(request)
+			if err != nil {
+				return response, errors.Join(err, transport.Close())
+			}
+			if response != nil && response.Body != nil {
+				response.Body = &closeOnCloseReadCloser{
+					ReadCloser: response.Body,
+					closeFunc:  transport.Close,
+				}
+			}
+			return response, nil
 		},
 	}
 
@@ -303,13 +361,18 @@ func (r *httpRequest) doH3Direct() (HTTPResponse, error) {
 			}
 
 			// 执行HTTP请求
-			rsp, err := f()
+			rsp, err := f() //nolint:bodyclose // successful bodies are sent to successCh and owned by the returned httpResponse.
 			if rsp == nil || err != nil {
 				mu.Lock()
 				finalErr = errors.Join(finalErr, fmt.Errorf("%s: %w", t, err))
 				mu.Unlock()
 				if rsp != nil && rsp.Body != nil {
-					rsp.Body.Close()
+					closeErr := rsp.Body.Close()
+					if closeErr != nil {
+						mu.Lock()
+						finalErr = errors.Join(finalErr, fmt.Errorf("%s close body: %w", t, closeErr))
+						mu.Unlock()
+					}
 				}
 				return
 			}
@@ -329,13 +392,25 @@ func (r *httpRequest) doH3Direct() (HTTPResponse, error) {
 				// 第一个成功的请求，不要关闭 body
 				successCount.Add(1)
 			default:
-				rsp.Body.Close()
+				if closeErr := rsp.Body.Close(); closeErr != nil {
+					log.Println("close duplicate http response:", closeErr)
+				}
 			}
 		}(f)
 	}
 
 	select {
 	case result := <-successCh:
+		cancelOnReturn = false
+		if result.Body != nil {
+			result.Body = &closeOnCloseReadCloser{
+				ReadCloser: result.Body,
+				closeFunc: func() error {
+					cancel()
+					return nil
+				},
+			}
+		}
 		return &httpResponse{Response: result}, nil
 	case <-ctx.Done():
 		return nil, finalErr
@@ -367,7 +442,9 @@ func (h *httpResponse) GetHeader(key string) *StringBox {
 
 func (h *httpResponse) GetContent() ([]byte, error) {
 	h.getContentOnce.Do(func() {
-		defer h.Body.Close()
+		defer func() {
+			h.contentError = errors.Join(h.contentError, h.Body.Close())
+		}()
 		h.content, h.contentError = io.ReadAll(h.Body)
 	})
 	return h.content, h.contentError
@@ -389,13 +466,17 @@ func (h *httpResponse) getContentString() (string, error) {
 	return string(content), nil
 }
 
-func (h *httpResponse) WriteTo(path string) error {
-	defer h.Body.Close()
+func (h *httpResponse) WriteTo(path string) (err error) {
+	defer func() {
+		err = errors.Join(err, h.Body.Close())
+	}()
 	file, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		err = errors.Join(err, common.Close(file))
+	}()
 	_, err = io.Copy(file, h.Body)
 	return err
 }

@@ -16,8 +16,11 @@ import android.os.UserManager
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
+import com.google.android.material.color.DynamicColors
+import com.google.android.material.color.DynamicColorsOptions
 import go.Seq
 import io.nekohasekai.sagernet.bg.SagerConnection
+import io.nekohasekai.sagernet.bg.SubscriptionUpdater
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.isOss
@@ -30,6 +33,7 @@ import kotlinx.coroutines.DEBUG_PROPERTY_VALUE_ON
 import libcore.Libcore
 import moe.matsuri.nb4a.NativeInterface
 import moe.matsuri.nb4a.net.LocalResolverImpl
+import moe.matsuri.nb4a.ui.ConnectionTestNotification
 import moe.matsuri.nb4a.utils.JavaUtil
 import moe.matsuri.nb4a.utils.cleanWebview
 import java.io.File
@@ -44,7 +48,7 @@ class SagerNet : Application(),
         application = this
     }
 
-    private val nativeInterface = NativeInterface()
+    val nativeInterface = NativeInterface()
 
     val externalAssets: File by lazy { getExternalFilesDir(null) ?: filesDir }
     val process: String = JavaUtil.getProcessName()
@@ -68,6 +72,7 @@ class SagerNet : Application(),
                 DataStore.logLevel > 0,
                 nativeInterface, nativeInterface, LocalResolverImpl
             )
+            loadRootCACerts()
 
             // fix multi process issue in Android 9+
             JavaUtil.handleWebviewDir(this)
@@ -79,11 +84,29 @@ class SagerNet : Application(),
         }
 
         if (isMainProcess) {
+            DynamicColors.applyToActivitiesIfAvailable(
+                this,
+                DynamicColorsOptions.Builder()
+                    .setPrecondition { _, _ -> Theme.isMaterialYou() || CustomTheme.useDynamicColors() }
+                    .build()
+            )
             Theme.apply(this)
             Theme.applyNightTheme()
+            AppLocale.apply()
+            if (DataStore.runningTest) {
+                DataStore.runningTest = false
+                ConnectionTestNotification.cancel(this)
+            }
             runOnDefaultDispatcher {
                 DefaultNetworkListener.start(this) {
                     underlyingNetwork = it
+                    nativeInterface.syncNetworkState(it)
+                }
+
+                runCatching {
+                    SubscriptionUpdater.reconfigureUpdater()
+                }.onFailure {
+                    Logs.w("Unable to reconfigure subscription updater: ${it.message}")
                 }
 
                 updateNotificationChannels()

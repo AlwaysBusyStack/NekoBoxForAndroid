@@ -12,12 +12,17 @@ import android.os.Bundle
 import android.os.RemoteException
 import android.view.KeyEvent
 import android.view.MenuItem
+import android.view.View
+import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.annotation.IdRes
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentManager
 import androidx.preference.PreferenceDataStore
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.snackbar.Snackbar
 import io.nekohasekai.sagernet.BuildConfig
@@ -43,6 +48,7 @@ import io.nekohasekai.sagernet.fmt.PluginEntry
 import io.nekohasekai.sagernet.group.GroupInterfaceAdapter
 import io.nekohasekai.sagernet.group.GroupUpdater
 import io.nekohasekai.sagernet.ktx.alert
+import io.nekohasekai.sagernet.ktx.AmneziaApiKeyUnsupportedException
 import io.nekohasekai.sagernet.ktx.isPlay
 import io.nekohasekai.sagernet.ktx.isPreview
 import io.nekohasekai.sagernet.ktx.launchCustomTab
@@ -52,6 +58,13 @@ import io.nekohasekai.sagernet.ktx.readableMessage
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
 import io.nekohasekai.sagernet.ui.MessageStore
 import io.nekohasekai.sagernet.ktx.Logs
+import io.nekohasekai.sagernet.utils.PackageCache
+import io.nekohasekai.sagernet.utils.RoutingRulesService
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
 import moe.matsuri.nb4a.utils.Util
 
 class MainActivity : ThemedActivity(),
@@ -59,8 +72,20 @@ class MainActivity : ThemedActivity(),
     OnPreferenceDataStoreChangeListener,
     NavigationView.OnNavigationItemSelectedListener {
 
+    companion object {
+        const val ACTION_SHOW_CONNECTION_TEST = "io.nekohasekai.sagernet.action.SHOW_CONNECTION_TEST"
+    }
+
     lateinit var binding: LayoutMainBinding
     lateinit var navigation: NavigationView
+    private var proxyAppsDrawerSwitch: MaterialSwitch? = null
+    private var syncingProxyAppsDrawerSwitch = false
+    private var bottomControlsOnConfiguration = false
+    private var activityStarted = false
+    private var currentServiceProfileName: String? = null
+    private var masterDnsVPNConnectedToastShown = false
+    private var restoreConnectionTestLifecycleCallback: FragmentManager.FragmentLifecycleCallbacks? =
+        null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,43 +93,66 @@ class MainActivity : ThemedActivity(),
 
         binding = LayoutMainBinding.inflate(layoutInflater)
         binding.fab.initProgress(binding.fabProgress)
-        if (themeResId !in intArrayOf(
-                R.style.Theme_SagerNet_Black
-            )
-        ) {
-            navigation = binding.navView
-            binding.drawerLayout.removeView(binding.navViewBlack)
-        } else {
-            navigation = binding.navViewBlack
-            binding.drawerLayout.removeView(binding.navView)
-        }
+        navigation = binding.navView
         navigation.setNavigationItemSelectedListener(this)
+        setupProxyAppsDrawerItem()
+
+        binding.fab.setOnClickListener {
+            if (DataStore.serviceState.canStop) {
+                SagerNet.stopService()
+            } else {
+                // ПРОВЕРКА БАЗ ПЕРЕД ЗАПУСКОМ VPN
+                val filesDir = getExternalFilesDir(null) ?: filesDir
+                val geoip = java.io.File(filesDir, "geoip.db")
+                val geosite = java.io.File(filesDir, "geosite.db")
+
+                if (!geoip.exists() || !geosite.exists()) {
+                    // Баз нет! Показываем красивое окно и отправляем качать
+                    MaterialAlertDialogBuilder(this)
+                        .setTitle(R.string.geodb_update_needed)
+                        .setMessage(R.string.geodb_update_needed_message)
+                        .setPositiveButton(R.string.download) { _, _ ->
+                            startActivity(Intent(this, AssetsActivity::class.java))
+                        }
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .show()
+                } else {
+                    // Базы есть, запускаем VPN
+                    connect.launch(null)
+                }
+            }
+        }
+        binding.stats.setOnClickListener {
+            if (binding.stats.isEnabled && DataStore.serviceState.connected) binding.stats.testConnection()
+        }
 
         if (savedInstanceState == null) {
             displayFragmentWithId(R.id.nav_configuration)
         }
         onBackPressedDispatcher.addCallback {
-            if (supportFragmentManager.findFragmentById(R.id.fragment_holder) is ConfigurationFragment) {
+            val fragment = supportFragmentManager.findFragmentById(R.id.fragment_holder)
+            if ((fragment as? ToolbarFragment)?.onBackPressed() == true) {
+                return@addCallback
+            }
+            if (fragment is ConfigurationFragment) {
                 moveTaskToBack(true)
             } else {
                 displayFragmentWithId(R.id.nav_configuration)
             }
         }
 
-        binding.fab.setOnClickListener {
-            if (DataStore.serviceState.canStop) SagerNet.stopService() else connect.launch(
-                null
-            )
-        }
-        binding.stats.setOnClickListener { if (DataStore.serviceState.connected) binding.stats.testConnection() }
-
         setContentView(binding.root)
+        binding.fab.bringToFront()
+        binding.fabProgress.bringToFront()
         changeState(BaseService.State.Idle)
+        if (savedInstanceState != null) {
+            updateBottomControlsVisibility(animate = false)
+        }
         connection.connect(this, this)
         DataStore.configurationStore.registerChangeListener(this)
         GroupManager.userInterface = GroupInterfaceAdapter(this)
 
-        if (intent?.action == Intent.ACTION_VIEW) {
+        if (intent?.action == Intent.ACTION_VIEW || intent?.action == ACTION_SHOW_CONNECTION_TEST) {
             onNewIntent(intent)
         }
 
@@ -129,11 +177,105 @@ class MainActivity : ThemedActivity(),
                 .setPositiveButton(android.R.string.ok, null)
                 .show()
         }
+
+        if (!DataStore.proxyAppsFirstSetup) {
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) { PackageCache.awaitLoadSync() }
+                performProxyAppsFirstSetup()
+            }
+        }
+    }
+
+    private suspend fun performProxyAppsFirstSetup() {
+        DataStore.proxyApps = true
+        DataStore.bypass = false
+        DataStore.proxyAppsFirstSetup = true
+
+        val dir = detectRoutingDir()
+        if (dir != null) {
+            applyFirstRunSelection(dir)
+        } else {
+            showFirstRunRegionPicker()
+        }
+    }
+
+    private fun detectRoutingDir(): String? = when (Locale.getDefault().country.uppercase()) {
+        "RU" -> "ru"
+        "CN" -> "cn"
+        "IR" -> "ir"
+        else -> null
+    }
+
+    private fun applyFirstRunSelection(routingDir: String) {
+        DataStore.firstRunRoutingRegion = routingDir
+        val service = RoutingRulesService(this, routingDir)
+        val selected = service.computeProxiedPackages(PackageCache.installedPackages, false)
+        DataStore.individual = selected.joinToString("\n")
+    }
+
+    private fun showFirstRunRegionPicker() {
+        val labels = arrayOf(
+            getString(R.string.routing_region_russia),
+            getString(R.string.routing_region_china),
+            getString(R.string.routing_region_iran),
+            getString(R.string.routing_region_other)
+        )
+        val dirs = arrayOf("ru", "cn", "ir", "other")
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.routing_select_region)
+            .setItems(labels) { _, i -> applyFirstRunSelection(dirs[i]) }
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun setupProxyAppsDrawerItem() {
+        val item = navigation.menu.findItem(R.id.nav_route_apps) ?: return
+        item.isCheckable = false
+        item.setActionView(R.layout.layout_main_drawer_switch)
+
+        val switchView = item.actionView?.findViewById<MaterialSwitch>(R.id.drawer_switch) ?: return
+        proxyAppsDrawerSwitch = switchView
+        switchView.setOnCheckedChangeListener { _, isChecked ->
+            if (syncingProxyAppsDrawerSwitch || DataStore.proxyApps == isChecked) return@setOnCheckedChangeListener
+            if (isChecked) {
+                DataStore.proxyApps = true
+                DataStore.dirty = true
+                return@setOnCheckedChangeListener
+            }
+
+            MaterialAlertDialogBuilder(this)
+                .setMessage(R.string.disable_per_app_routing_warning)
+                .setPositiveButton(R.string.yes) { _, _ ->
+                    DataStore.proxyApps = false
+                    syncProxyAppsDrawerItem()
+                }
+                .setNegativeButton(R.string.no) { _, _ ->
+                    syncProxyAppsDrawerItem()
+                }
+                .setOnCancelListener {
+                    syncProxyAppsDrawerItem()
+                }
+                .show()
+        }
+        syncProxyAppsDrawerItem()
+    }
+
+    private fun syncProxyAppsDrawerItem() {
+        val switchView = proxyAppsDrawerSwitch ?: return
+        syncingProxyAppsDrawerSwitch = true
+        switchView.isChecked = DataStore.proxyApps
+        syncingProxyAppsDrawerSwitch = false
+    }
+
+    private fun openAppManager() {
+        startActivity(Intent(this, AppManagerActivity::class.java))
+        binding.drawerLayout.closeDrawers()
     }
 
     override fun onResume() {
         super.onResume()
         MessageStore.setCurrentActivity(this)
+        syncProxyAppsDrawerItem()
         
         if (DataStore.hideFromRecentApps) {
             applyHideFromRecentApps(DataStore.hideFromRecentApps)
@@ -161,7 +303,12 @@ class MainActivity : ThemedActivity(),
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
 
+        if (intent.action == ACTION_SHOW_CONNECTION_TEST) {
+            restoreConnectionTestDialog()
+            return
+        }
         val uri = intent.data ?: return
 
         runOnDefaultDispatcher {
@@ -170,6 +317,59 @@ class MainActivity : ThemedActivity(),
             } else {
                 importProfile(uri)
             }
+        }
+    }
+
+    private fun restoreConnectionTestDialog() {
+        if (!GroupConnectionTestController.requestRestore()) {
+            displayFragmentWithId(R.id.nav_configuration)
+            return
+        }
+        val activeGroupId = GroupConnectionTestController.activeGroupId
+        if (activeGroupId > 0L) {
+            DataStore.selectedGroup = activeGroupId
+        }
+        displayFragmentWithId(R.id.nav_configuration)
+        supportFragmentManager.executePendingTransactions()
+        restoreConnectionTestDialogWhenReady()
+    }
+
+    private fun restoreConnectionTestDialogWhenReady(attempt: Int = 0) {
+        (supportFragmentManager.findFragmentById(R.id.fragment_holder) as? ConfigurationFragment)
+            ?.takeIf { it.isAdded && it.view != null }
+            ?.let {
+                GroupConnectionTestController.restore(it)
+                if (!GroupConnectionTestController.isRestorePending) return
+            }
+
+        restoreConnectionTestLifecycleCallback?.let {
+            supportFragmentManager.unregisterFragmentLifecycleCallbacks(it)
+        }
+        restoreConnectionTestLifecycleCallback = object : FragmentManager.FragmentLifecycleCallbacks() {
+            override fun onFragmentViewCreated(
+                fm: FragmentManager,
+                fragment: Fragment,
+                view: View,
+                savedInstanceState: Bundle?,
+            ) {
+                if (fragment !is ConfigurationFragment || !GroupConnectionTestController.isActive) return
+                restoreConnectionTestLifecycleCallback?.let {
+                    supportFragmentManager.unregisterFragmentLifecycleCallbacks(it)
+                }
+                restoreConnectionTestLifecycleCallback = null
+                GroupConnectionTestController.restore(fragment)
+            }
+        }
+        supportFragmentManager.registerFragmentLifecycleCallbacks(
+            restoreConnectionTestLifecycleCallback!!,
+            false,
+        )
+        if (attempt < 20 && GroupConnectionTestController.isActive) {
+            binding.root.postDelayed({
+                if (GroupConnectionTestController.isRestorePending) {
+                    restoreConnectionTestDialogWhenReady(attempt + 1)
+                }
+            }, 100)
         }
     }
 
@@ -239,8 +439,14 @@ class MainActivity : ThemedActivity(),
     }
 
     suspend fun importProfile(uri: Uri) {
-        val profile = try {
-            parseProxies(uri.toString()).getOrNull(0) ?: error(getString(R.string.no_proxies_found))
+        val profiles = try {
+            parseProxies(uri.toString()).takeIf { it.isNotEmpty() }
+                ?: error(getString(R.string.no_proxies_found))
+        } catch (e: AmneziaApiKeyUnsupportedException) {
+            onMainDispatcher {
+                alert(getString(R.string.amnezia_api_key_unsupported)).show()
+            }
+            return
         } catch (e: Exception) {
             onMainDispatcher {
                 alert(e.readableMessage).show()
@@ -249,11 +455,21 @@ class MainActivity : ThemedActivity(),
         }
 
         onMainDispatcher {
+            val confirmation = ProfileImportPolicy.confirmation(profiles.map { it.displayName() })
+            val message = when (confirmation) {
+                is ProfileImportPolicy.Confirmation.Single -> {
+                    getString(R.string.profile_import_message, confirmation.profileName)
+                }
+                is ProfileImportPolicy.Confirmation.Multiple -> {
+                    getString(R.string.profile_import_many_message, confirmation.count)
+                }
+            }
+
             MaterialAlertDialogBuilder(this@MainActivity).setTitle(R.string.profile_import)
-                .setMessage(getString(R.string.profile_import_message, profile.displayName()))
+                .setMessage(message)
                 .setPositiveButton(R.string.yes) { _, _ ->
                     runOnDefaultDispatcher {
-                        finishImportProfile(profile)
+                        finishImportProfiles(profiles)
                     }
                 }
                 .setNegativeButton(android.R.string.cancel, null)
@@ -262,15 +478,17 @@ class MainActivity : ThemedActivity(),
 
     }
 
-    private suspend fun finishImportProfile(profile: AbstractBean) {
+    private suspend fun finishImportProfiles(profiles: List<AbstractBean>) {
         val targetId = DataStore.selectedGroupForImport()
 
-        ProfileManager.createProfile(targetId, profile)
+        for (profile in profiles) {
+            ProfileManager.createProfile(targetId, profile)
+        }
 
         onMainDispatcher {
             displayFragmentWithId(R.id.nav_configuration)
 
-            snackbar(resources.getQuantityString(R.plurals.added, 1, 1)).show()
+            snackbar(resources.getQuantityString(R.plurals.added, profiles.size, profiles.size)).show()
         }
     }
 
@@ -340,18 +558,44 @@ class MainActivity : ThemedActivity(),
 
     @SuppressLint("CommitTransaction")
     fun displayFragment(fragment: ToolbarFragment) {
-        if (fragment is ConfigurationFragment) {
-            binding.stats.allowShow = true
-            binding.fab.show()
-        } else if (!DataStore.showBottomBar) {
-            binding.stats.allowShow = false
-            binding.stats.performHide()
-            binding.fab.hide()
-        }
+        updateBottomControlsVisibility(fragment)
         supportFragmentManager.beginTransaction()
             .replace(R.id.fragment_holder, fragment)
             .commitAllowingStateLoss()
         binding.drawerLayout.closeDrawers()
+    }
+
+    private fun updateBottomControlsVisibility(
+        fragment: ToolbarFragment? = supportFragmentManager.findFragmentById(R.id.fragment_holder) as? ToolbarFragment,
+        animate: Boolean = true,
+        syncState: Boolean = true,
+    ) {
+        if (fragment == null) return
+        bottomControlsOnConfiguration = fragment is ConfigurationFragment
+        if (bottomControlsOnConfiguration) {
+            binding.stats.allowShow = true
+            binding.stats.visibility = View.VISIBLE
+            binding.fabProgress.visibility = View.INVISIBLE
+            binding.fab.show()
+            if (syncState) {
+                binding.fab.changeState(DataStore.serviceState, DataStore.serviceState, false)
+                binding.stats.changeState(DataStore.serviceState)
+            }
+        } else {
+            hideBottomControls(animate)
+        }
+    }
+
+    private fun hideBottomControls(animate: Boolean) {
+        binding.stats.allowShow = false
+        binding.stats.hideOnScroll = false
+        if (animate) {
+            binding.stats.performHide()
+            binding.fab.hide()
+        }
+        binding.stats.visibility = View.GONE
+        binding.fab.visibility = View.GONE
+        binding.fabProgress.visibility = View.GONE
     }
 
     fun displayFragmentWithId(@IdRes id: Int): Boolean {
@@ -362,6 +606,10 @@ class MainActivity : ThemedActivity(),
 
             R.id.nav_group -> displayFragment(GroupFragment())
             R.id.nav_route -> displayFragment(RouteFragment())
+            R.id.nav_route_apps -> {
+                openAppManager()
+                return false
+            }
             R.id.nav_settings -> displayFragment(SettingsFragment())
             R.id.nav_traffic -> displayFragment(WebviewFragment())
             R.id.nav_tools -> displayFragment(ToolsFragment())
@@ -384,10 +632,25 @@ class MainActivity : ThemedActivity(),
         msg: String? = null,
         animate: Boolean = false,
     ) {
+        updateBottomControlsVisibility(animate = false, syncState = false)
+        val previousState = DataStore.serviceState
         DataStore.serviceState = state
 
-        binding.fab.changeState(state, DataStore.serviceState, animate)
-        binding.stats.changeState(state)
+        if (bottomControlsOnConfiguration) {
+            binding.fab.changeState(state, previousState, animate)
+            binding.stats.changeState(state)
+        } else {
+            hideBottomControls(animate = false)
+        }
+        (supportFragmentManager.findFragmentById(R.id.fragment_holder) as? ConfigurationFragment)
+            ?.let {
+                it.refreshVisibleTraffic()
+                it.refreshVisibleProfileActions()
+            }
+        (supportFragmentManager.findFragmentById(R.id.fragment_holder) as? WebviewFragment)
+            ?.applyServiceState(state)
+        (supportFragmentManager.findFragmentById(R.id.fragment_holder) as? SettingsFragment)
+            ?.syncServiceState()
         if (msg != null) snackbar(getString(R.string.vpn_error, msg)).show()
     }
 
@@ -401,17 +664,44 @@ class MainActivity : ThemedActivity(),
     }
 
     override fun stateChanged(state: BaseService.State, profileName: String?, msg: String?) {
+        currentServiceProfileName = profileName
+        if (state != BaseService.State.Connected) masterDnsVPNConnectedToastShown = false
         changeState(state, msg, true)
     }
 
-    val connection = SagerConnection(SagerConnection.CONNECTION_ID_MAIN_ACTIVITY_FOREGROUND, true)
-    override fun onServiceConnected(service: ISagerNetService) = changeState(
-        try {
-            BaseService.State.values()[service.state]
-        } catch (_: RemoteException) {
-            BaseService.State.Idle
+    override fun cbMasterDnsVPNResolverProgress(found: Int, total: Int, ready: Boolean) {
+        if (bottomControlsOnConfiguration) {
+            binding.stats.showMasterDnsVPNResolverProgress(found, total, ready)
         }
-    )
+        if (!ready) {
+            masterDnsVPNConnectedToastShown = false
+            return
+        }
+        if (!activityStarted && !masterDnsVPNConnectedToastShown) {
+            masterDnsVPNConnectedToastShown = true
+            Toast.makeText(
+                applicationContext,
+                getString(R.string.masterdnsvpn_profile_connected, currentServiceProfileName.orEmpty()),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    val connection = SagerConnection(SagerConnection.CONNECTION_ID_MAIN_ACTIVITY_FOREGROUND, true)
+    override fun onServiceConnected(service: ISagerNetService) {
+        currentServiceProfileName = try {
+            service.profileName
+        } catch (_: RemoteException) {
+            null
+        }
+        changeState(
+            try {
+                BaseService.State.values()[service.state]
+            } catch (_: RemoteException) {
+                BaseService.State.Idle
+            }
+        )
+    }
 
     override fun onServiceDisconnected() = changeState(BaseService.State.Idle)
     override fun onBinderDied() {
@@ -448,7 +738,14 @@ class MainActivity : ThemedActivity(),
     override fun onPreferenceDataStoreChanged(store: PreferenceDataStore, key: String) {
         when (key) {
             Key.SERVICE_MODE -> onBinderDied()
+            Key.SPEED_INTERVAL, Key.PROFILE_TRAFFIC_UPDATE_INTERVAL, Key.PROFILE_TRAFFIC_STATISTICS -> {
+                (supportFragmentManager.findFragmentById(R.id.fragment_holder) as? ConfigurationFragment)
+                    ?.refreshVisibleTraffic()
+            }
             Key.PROXY_APPS, Key.BYPASS_MODE, Key.INDIVIDUAL -> {
+                if (key == Key.PROXY_APPS) {
+                    syncProxyAppsDrawerItem()
+                }
                 if (DataStore.serviceState.canStop) {
                     snackbar(getString(R.string.need_reload)).setAction(R.string.apply) {
                         SagerNet.reloadService()
@@ -459,16 +756,25 @@ class MainActivity : ThemedActivity(),
     }
 
     override fun onStart() {
+        activityStarted = true
         connection.updateConnectionId(SagerConnection.CONNECTION_ID_MAIN_ACTIVITY_FOREGROUND)
         super.onStart()
     }
 
     override fun onStop() {
+        activityStarted = false
         connection.updateConnectionId(SagerConnection.CONNECTION_ID_MAIN_ACTIVITY_BACKGROUND)
         super.onStop()
     }
 
     override fun onDestroy() {
+        if (isFinishing) {
+            GroupConnectionTestController.cancelFromNotification()
+        }
+        restoreConnectionTestLifecycleCallback?.let {
+            supportFragmentManager.unregisterFragmentLifecycleCallbacks(it)
+        }
+        restoreConnectionTestLifecycleCallback = null
         super.onDestroy()
         GroupManager.userInterface = null
         DataStore.configurationStore.unregisterChangeListener(this)

@@ -21,7 +21,8 @@ data class ProxyGroup(
     var order: Int = GroupOrder.ORIGIN,
     var isSelector: Boolean = false,
     var frontProxy: Long = -1L,
-    var landingProxy: Long = -1L
+    var landingProxy: Long = -1L,
+    var forceUTLS: String = ""
 ) : Serializable() {
 
     @Transient
@@ -41,7 +42,7 @@ data class ProxyGroup(
             subscription.serializeForShare(output)
 
         } else {
-            output.writeInt(0)
+            output.writeInt(1)
             output.writeLong(id)
             output.writeLong(userOrder)
             output.writeBoolean(ungrouped)
@@ -52,6 +53,10 @@ data class ProxyGroup(
                 subscription?.serializeToBuffer(output)
             }
             output.writeInt(order)
+            output.writeBoolean(isSelector)
+            output.writeLong(frontProxy)
+            output.writeLong(landingProxy)
+            output.writeString(forceUTLS)
         }
     }
 
@@ -81,6 +86,12 @@ data class ProxyGroup(
                 subscription.deserializeFromBuffer(input)
             }
             order = input.readInt()
+            if (version >= 1) {
+                isSelector = input.readBoolean()
+                frontProxy = input.readLong()
+                landingProxy = input.readLong()
+                forceUTLS = input.readString().orEmpty()
+            }
         }
     }
 

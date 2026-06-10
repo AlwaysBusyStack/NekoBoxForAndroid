@@ -9,6 +9,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
 
+import io.nekohasekai.sagernet.ktx.JsonHashNormalizer;
 import io.nekohasekai.sagernet.ktx.NetsKt;
 import moe.matsuri.nb4a.utils.JavaUtil;
 
@@ -114,6 +115,32 @@ public abstract class AbstractBean extends Serializable {
     @NotNull
     @Override
     public abstract AbstractBean clone();
+
+    @NotNull
+    public abstract String getHash();
+
+    protected void normalizeJsonFieldsForHash() {
+        customOutboundJson = JsonHashNormalizer.normalizeJsonStringOrRaw(customOutboundJson);
+        customConfigJson = JsonHashNormalizer.normalizeJsonStringOrRaw(customConfigJson);
+    }
+
+    @NotNull
+    protected final String buildTypedHash(@NotNull String type) {
+        try {
+            AbstractBean copy = clone();
+            copy.normalizeJsonFieldsForHash();
+            copy.serializeWithoutName = true;
+            byte[] data = KryoConverters.serialize(copy);
+            long hash = 0xcbf29ce484222325L;
+            for (byte datum : data) {
+                hash ^= datum & 0xffL;
+                hash *= 0x100000001b3L;
+            }
+            return type + ':' + Long.toUnsignedString(hash, 16);
+        } finally {
+            serializeWithoutName = false;
+        }
+    }
 
     @Override
     public boolean equals(Object o) {

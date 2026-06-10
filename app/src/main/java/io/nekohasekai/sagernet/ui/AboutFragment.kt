@@ -81,25 +81,7 @@ class AboutFragment : ToolbarFragment(R.layout.layout_about) {
                                 .icon(R.drawable.ic_baseline_update_24)
                                 .text(R.string.app_version)
                                 .subText(SagerNet.appVersionNameForDisplay)
-                                .setOnClickAction {
-                                    requireContext().launchCustomTab(
-                                        "https://github.com/MatsuriDayo/NekoBoxForAndroid/releases"
-                                    )
-                                }
-                                .build())
-                        .addItem(
-                            MaterialAboutActionItem.Builder()
-                                .text(R.string.check_update_release)
-                                .setOnClickAction {
-                                    checkUpdate(false)
-                                }
-                                .build())
-                        .addItem(
-                            MaterialAboutActionItem.Builder()
-                                .text(R.string.check_update_preview)
-                                .setOnClickAction {
-                                    checkUpdate(true)
-                                }
+                                .setOnClickAction { }
                                 .build())
                         .addItem(
                             MaterialAboutActionItem.Builder()
@@ -107,17 +89,6 @@ class AboutFragment : ToolbarFragment(R.layout.layout_about) {
                                 .text(getString(R.string.version_x, "sing-box"))
                                 .subText(Libcore.versionBox())
                                 .setOnClickAction { }
-                                .build())
-                        .addItem(
-                            MaterialAboutActionItem.Builder()
-                                .icon(R.drawable.ic_baseline_card_giftcard_24)
-                                .text(R.string.donate)
-                                .subText(R.string.donate_info)
-                                .setOnClickAction {
-                                    requireContext().launchCustomTab(
-                                        "https://matsuridayo.github.io/index_docs/#donate"
-                                    )
-                                }
                                 .build())
                         .apply {
                             PackageCache.awaitLoadSync()
@@ -183,18 +154,8 @@ class AboutFragment : ToolbarFragment(R.layout.layout_about) {
                                 .text(R.string.github)
                                 .setOnClickAction {
                                     requireContext().launchCustomTab(
-                                        "https://github.com/MatsuriDayo/NekoBoxForAndroid"
+                                        "https://4pda.to/forum/index.php?showtopic=1121122"
 
-                                    )
-                                }
-                                .build())
-                        .addItem(
-                            MaterialAboutActionItem.Builder()
-                                .icon(R.drawable.ic_qu_shadowsocks_foreground)
-                                .text(R.string.telegram)
-                                .setOnClickAction {
-                                    requireContext().launchCustomTab(
-                                        "https://t.me/MatsuriDayo"
                                     )
                                 }
                                 .build())
@@ -208,69 +169,6 @@ class AboutFragment : ToolbarFragment(R.layout.layout_about) {
 
             view.findViewById<RecyclerView>(R.id.mal_recyclerview).apply {
                 overScrollMode = RecyclerView.OVER_SCROLL_NEVER
-            }
-        }
-
-        fun checkUpdate(checkPreview: Boolean) {
-            runOnIoDispatcher {
-                try {
-                    val client = Libcore.newHttpClient().apply {
-                        modernTLS()
-                        trySocks5(DataStore.mixedPort)
-                    }
-                    val response = client.newRequest().apply {
-                        if (checkPreview) {
-                            setURL("https://api.github.com/repos/starifly/NekoBoxForAndroid/releases/tags/preview")
-                        } else {
-                            setURL("https://api.github.com/repos/starifly/NekoBoxForAndroid/releases/latest")
-                        }
-                    }.execute()
-                    val release = JSONObject(Util.getStringBox(response.contentString))
-                    val releaseName = release.getString("name")
-                    val releaseUrl = release.getString("html_url")
-                    var haveUpdate = releaseName.isNotBlank()
-                    haveUpdate = if (isPreview) {
-                        if (checkPreview) {
-                            haveUpdate && releaseName != BuildConfig.PRE_VERSION_NAME
-                        } else {
-                            // User: 1.3.9 pre-1.4.0 Stable: 1.3.9 -> No update
-                            haveUpdate && releaseName != BuildConfig.VERSION_NAME
-                        }
-                    } else {
-                        // User: 1.4.0 Preview: pre-1.4.0 -> No update
-                        // User: 1.4.0 Preview: pre-1.4.1 -> Update
-                        // User: 1.4.0 Stable: 1.4.0 -> No update
-                        // User: 1.4.0 Stable: 1.4.1 -> Update
-                        haveUpdate && !releaseName.contains(BuildConfig.VERSION_NAME)
-                    }
-                    runOnMainDispatcher {
-                        if (haveUpdate) {
-                            val context = requireContext()
-                            MaterialAlertDialogBuilder(context)
-                                .setTitle(R.string.update_dialog_title)
-                                .setMessage(
-                                    context.getString(
-                                        R.string.update_dialog_message,
-                                        SagerNet.appVersionNameForDisplay,
-                                        releaseName
-                                    )
-                                )
-                                .setPositiveButton(R.string.yes) { _, _ ->
-                                    val intent = Intent(Intent.ACTION_VIEW, releaseUrl.toUri())
-                                    context.startActivity(intent)
-                                }
-                                .setNegativeButton(R.string.no, null)
-                                .show()
-                        } else {
-                            Toast.makeText(app, R.string.check_update_no, Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                } catch (e: Exception) {
-                    Logs.w(e)
-                    runOnMainDispatcher {
-                        Toast.makeText(app, e.readableMessage, Toast.LENGTH_SHORT).show()
-                    }
-                }
             }
         }
 

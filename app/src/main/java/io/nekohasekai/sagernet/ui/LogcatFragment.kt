@@ -4,9 +4,6 @@ import android.annotation.SuppressLint
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
-import android.text.SpannableString
-import android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-import android.text.style.ForegroundColorSpan
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
@@ -34,6 +31,7 @@ class LogcatFragment : ToolbarFragment(R.layout.layout_logcat),
         toolbar.setOnMenuItemClickListener(this)
 
         binding = LayoutLogcatBinding.bind(view)
+        binding.scroolview.attachScrollbar(binding.scrollbarTrack, binding.scrollbarThumb)
 
         if (Build.VERSION.SDK_INT >= 23) {
             binding.textview.breakStrategy = 0 // simple
@@ -44,36 +42,20 @@ class LogcatFragment : ToolbarFragment(R.layout.layout_logcat),
         reloadSession()
     }
 
-    private fun getColorForLine(line: String): ForegroundColorSpan {
-        var color = ForegroundColorSpan(Color.GRAY)
-        when {
-            line.contains("INFO[") || line.contains(" [Info]") -> {
-                color = ForegroundColorSpan((0xFF86C166).toInt())
-            }
-
-            line.contains("ERROR[") || line.contains(" [Error]") -> {
-                color = ForegroundColorSpan(Color.RED)
-            }
-
-            line.contains("WARN[") || line.contains(" [Warning]") -> {
-                color = ForegroundColorSpan(Color.RED)
-            }
+    private fun getColorForLine(line: String): Int {
+        return when {
+            line.contains("INFO[") || line.contains(" [Info]") -> (0xFF86C166).toInt()
+            line.contains("ERROR[") || line.contains(" [Error]") -> Color.RED
+            line.contains("WARN[") || line.contains(" [Warning]") -> Color.RED
+            else -> Color.GRAY
         }
-        return color
     }
 
     private fun reloadSession() {
-        val span = SpannableString(
-            String(SendLog.getNekoLog(50 * 1024))
+        val span = AnsiLogFormatter.toSpannable(
+            String(SendLog.getNekoLog(50 * 1024)),
+            ::getColorForLine,
         )
-        var offset = 0
-        for (line in span.lines()) {
-            val color = getColorForLine(line)
-            span.setSpan(
-                color, offset, offset + line.length, SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            offset += line.length + 1
-        }
         binding.textview.text = span
         binding.textview.clearFocus()
         // 等 textview 完成最终 layout 再滚动到底部

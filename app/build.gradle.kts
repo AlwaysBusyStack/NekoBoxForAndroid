@@ -57,10 +57,13 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.8.1")
     implementation("androidx.work:work-multiprocess:2.8.1")
 
-    implementation("com.google.android.material:material:1.8.0")
+    implementation("com.google.android.material:material:1.13.0")
     implementation("com.google.code.gson:gson:2.9.0")
 
-    implementation("com.github.jenly1314:zxing-lite:2.1.1")
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
+    implementation("com.google.zxing:core:3.5.4")
     implementation("com.blacksquircle.ui:editorkit:2.6.0")
     implementation("com.blacksquircle.ui:language-base:2.6.0")
     implementation("com.blacksquircle.ui:language-json:2.6.0")
@@ -83,6 +86,9 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     implementation("com.github.MatrixDev.Roomigrant:RoomigrantLib:0.3.4")
     ksp("com.github.MatrixDev.Roomigrant:RoomigrantCompiler:0.3.4")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
 }

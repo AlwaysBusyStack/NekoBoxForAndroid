@@ -10,4 +10,12 @@ interface ISagerNetService {
   oneway void unregisterCallback(in ISagerNetServiceCallback cb);
 
   int urlTest();
+
+  boolean isCoreProfilingRunning();
+  boolean hasCoreProfilerSnapshot();
+  void performLibcoreGcSweep();
+  void startCoreProfiling();
+  void stopCoreProfiling();
+  void writeCoreProfilerSnapshot(String outputDir);
+  void deleteCoreProfilerSnapshot();
 }

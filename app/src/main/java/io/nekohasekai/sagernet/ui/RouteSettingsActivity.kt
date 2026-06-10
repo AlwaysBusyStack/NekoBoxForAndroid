@@ -1,21 +1,33 @@
 package io.nekohasekai.sagernet.ui
 
+import android.Manifest
 import android.app.Activity
 import android.content.DialogInterface
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
+import android.provider.Settings
+import android.text.InputType
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.result.component1
 import androidx.activity.result.component2
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.LayoutRes
 import androidx.appcompat.app.AlertDialog
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.core.view.setPadding
 import androidx.core.view.ViewCompat
 import androidx.preference.EditTextPreference
+import androidx.preference.MultiSelectListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceDataStore
 import androidx.preference.PreferenceFragmentCompat
@@ -38,14 +50,33 @@ import io.nekohasekai.sagernet.utils.PackageCache
 import io.nekohasekai.sagernet.widget.AppListPreference
 import io.nekohasekai.sagernet.widget.ListListener
 import io.nekohasekai.sagernet.widget.OutboundPreference
+import io.nekohasekai.sagernet.widget.RouteEditTextPreferenceDialogFragment
 import kotlinx.parcelize.Parcelize
 import moe.matsuri.nb4a.ui.EditConfigPreference
+import moe.matsuri.nb4a.ui.SimpleMenuPreference
+import moe.matsuri.nb4a.ui.showMaterialEditTextPreferenceDialog
 
 @Suppress("UNCHECKED_CAST")
 class RouteSettingsActivity(
     @LayoutRes resId: Int = R.layout.layout_settings_activity,
 ) : ThemedActivity(resId),
     OnPreferenceDataStoreChangeListener {
+
+    companion object {
+        const val EXTRA_ROUTE_ID = "id"
+        const val EXTRA_PACKAGE_NAME = "pkg"
+        private const val WIFI_LOCATION_PERMISSION_REQUEST_CODE = 1001
+
+        private const val ROUTE_PROTOCOL_SELECTOR = "routeProtocolSelector"
+        private const val ROUTE_PROTOCOL_CUSTOM = "__custom__"
+    }
+
+    private val routeProtocolValues by lazy {
+        resources.getStringArray(R.array.route_sniff_protocol_value)
+    }
+    private val routeProtocolOfficialValues by lazy {
+        routeProtocolValues.filterNot { it == ROUTE_PROTOCOL_CUSTOM }.toSet()
+    }
 
     fun init(packageName: String?) {
         RuleEntity().apply {
@@ -63,10 +94,14 @@ class RouteSettingsActivity(
         DataStore.routeIP = ip
         DataStore.routePort = port
         DataStore.routeSourcePort = sourcePort
+        DataStore.routeNetworkType = networkType
+        DataStore.routeWifiSsid = wifiSsid
+        DataStore.routeWifiBssid = wifiBssid
         DataStore.routeNetwork = network
         DataStore.routeSource = source
         DataStore.routeProtocol = protocol
         DataStore.routeRuleset = ruleset
+        DataStore.routeCreateDnsRule = if (createDnsRule) 1 else 0
         DataStore.routeOutboundRule = outbound
         DataStore.routeOutbound = when (outbound) {
             0L -> 0
@@ -84,10 +119,14 @@ class RouteSettingsActivity(
         ip = DataStore.routeIP
         port = DataStore.routePort
         sourcePort = DataStore.routeSourcePort
+        networkType = DataStore.routeNetworkType
+        wifiSsid = RuleEntity.normalizeWifiSsid(DataStore.routeWifiSsid)
+        wifiBssid = RuleEntity.normalizeWifiBssid(DataStore.routeWifiBssid)
         network = DataStore.routeNetwork
         source = DataStore.routeSource
         protocol = DataStore.routeProtocol
         ruleset = DataStore.routeRuleset
+        createDnsRule = DataStore.routeCreateDnsRule != 0
         outbound = when (DataStore.routeOutbound) {
             0 -> 0L
             1 -> -1L
@@ -102,9 +141,66 @@ class RouteSettingsActivity(
     }
 
     private lateinit var editConfigPreference: EditConfigPreference
+    private lateinit var routeProtocolPreference: SimpleMenuPreference
+    private lateinit var routeWifiSsidPreference: EditTextPreference
+    private lateinit var routeWifiBssidPreference: EditTextPreference
+    private lateinit var routeNetworkTypePreference: MultiSelectListPreference
+    private var pendingWifiPermissionSave = false
+    private var pendingWifiBackgroundPermissionSave = false
+
+    private val requestBackgroundLocationSettings = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (!pendingWifiBackgroundPermissionSave) {
+            return@registerForActivityResult
+        }
+        pendingWifiBackgroundPermissionSave = false
+        runOnDefaultDispatcher {
+            persistAndExit()
+        }
+    }
 
     fun needSave(): Boolean {
         return DataStore.dirty
+    }
+
+    private fun routeProtocolSelectorValue(protocol: String): String {
+        return when {
+            protocol in routeProtocolOfficialValues -> protocol
+            protocol.isNotBlank() -> ROUTE_PROTOCOL_CUSTOM
+            else -> ""
+        }
+    }
+
+    private fun showRouteProtocolCustomDialog() {
+        val editText = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            setText(DataStore.routeProtocol)
+            setSelection(text.length)
+        }
+        val container = FrameLayout(this).apply {
+            val padding = (24 * resources.displayMetrics.density).toInt()
+            setPadding(padding)
+            addView(
+                editText,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.protocol)
+            .setView(container)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                DataStore.routeProtocol = editText.text?.toString().orEmpty()
+                routeProtocolPreference.value = routeProtocolSelectorValue(DataStore.routeProtocol)
+            }
+            .setNegativeButton(android.R.string.cancel) { _, _ ->
+                routeProtocolPreference.value = routeProtocolSelectorValue(DataStore.routeProtocol)
+            }
+            .show()
     }
 
     fun PreferenceFragmentCompat.createPreferences(
@@ -114,6 +210,14 @@ class RouteSettingsActivity(
         addPreferencesFromResource(R.xml.route_preferences)
 
         editConfigPreference = findPreference(Key.SERVER_CONFIG)!!
+        routeNetworkTypePreference = findPreference(Key.ROUTE_NETWORK_TYPE)!!
+        routeNetworkTypePreference.summaryProvider = MultiSelectSummaryProvider
+        routeWifiSsidPreference = findPreference(Key.ROUTE_WIFI_SSID)!!
+        routeWifiBssidPreference = findPreference(Key.ROUTE_WIFI_BSSID)!!
+        routeProtocolPreference = findPreference(ROUTE_PROTOCOL_SELECTOR)!!
+        routeProtocolPreference.value = routeProtocolSelectorValue(DataStore.routeProtocol)
+        routeProtocolPreference.summaryProvider = RouteProtocolSummaryProvider
+        updateWifiSsidVisibility()
     }
 
     override fun onResume() {
@@ -136,6 +240,7 @@ class RouteSettingsActivity(
             DataStore.routeOutboundRule = profile.id
             onMainDispatcher {
                 outbound.value = "3"
+                outbound.postUpdate()
             }
         }
     }
@@ -152,6 +257,22 @@ class RouteSettingsActivity(
     fun PreferenceFragmentCompat.viewCreated(view: View, savedInstanceState: Bundle?) {
         outbound = findPreference(Key.ROUTE_OUTBOUND)!!
         apps = findPreference(Key.ROUTE_PACKAGES)!!
+        routeProtocolPreference = findPreference(ROUTE_PROTOCOL_SELECTOR)!!
+        routeProtocolPreference.value = routeProtocolSelectorValue(DataStore.routeProtocol)
+        updateWifiSsidVisibility()
+        routeProtocolPreference.setOnPreferenceChangeListener { _, newValue ->
+            when (newValue.toString()) {
+                ROUTE_PROTOCOL_CUSTOM -> {
+                    showRouteProtocolCustomDialog()
+                    false
+                }
+
+                else -> {
+                    DataStore.routeProtocol = newValue.toString()
+                    true
+                }
+            }
+        }
 
         outbound.setOnPreferenceChangeListener { _, newValue ->
             if (newValue.toString() == "3") {
@@ -177,6 +298,23 @@ class RouteSettingsActivity(
     }
 
     fun displayPreferenceDialog(preference: Preference): Boolean {
+        val mode = when (preference.key) {
+            Key.ROUTE_WIFI_SSID -> RouteEditTextPreferenceDialogFragment.EditorMode.PLAIN_MULTILINE
+            Key.ROUTE_WIFI_BSSID -> RouteEditTextPreferenceDialogFragment.EditorMode.PLAIN_MULTILINE
+            Key.ROUTE_RULESET -> RouteEditTextPreferenceDialogFragment.EditorMode.RULESET
+            Key.ROUTE_DOMAIN -> RouteEditTextPreferenceDialogFragment.EditorMode.ROUTE_DOMAIN
+            Key.ROUTE_IP -> RouteEditTextPreferenceDialogFragment.EditorMode.ROUTE_IP
+            else -> null
+        }
+        if (mode != null && preference is EditTextPreference) {
+            RouteEditTextPreferenceDialogFragment.newInstance(
+                key = preference.key,
+                title = preference.title?.toString().orEmpty(),
+                value = preference.text.orEmpty(),
+                mode = mode,
+            ).show(supportFragmentManager, preference.key)
+            return true
+        }
         return false
     }
 
@@ -208,11 +346,6 @@ class RouteSettingsActivity(
             }
             setNegativeButton(R.string.no, null)
         }
-    }
-
-    companion object {
-        const val EXTRA_ROUTE_ID = "id"
-        const val EXTRA_PACKAGE_NAME = "pkg"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -257,6 +390,34 @@ class RouteSettingsActivity(
     }
 
     suspend fun saveAndExit() {
+        DataStore.routeWifiSsid = RuleEntity.normalizeWifiSsid(DataStore.routeWifiSsid)
+        DataStore.routeWifiBssid = RuleEntity.normalizeWifiBssid(DataStore.routeWifiBssid)
+
+        if (shouldRequestForegroundWifiPermission()) {
+            pendingWifiPermissionSave = true
+            onMainDispatcher {
+                ActivityCompat.requestPermissions(
+                    this@RouteSettingsActivity,
+                    arrayOf(
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                    ),
+                    WIFI_LOCATION_PERMISSION_REQUEST_CODE,
+                )
+            }
+            return
+        }
+        if (shouldRequestBackgroundWifiPermission()) {
+            onMainDispatcher {
+                requestBackgroundWifiPermissionThenSave()
+            }
+            return
+        }
+        pendingWifiPermissionSave = false
+        persistAndExit()
+    }
+
+    private suspend fun persistAndExit() {
 
         if (!needSave()) {
             onMainDispatcher {
@@ -313,9 +474,121 @@ class RouteSettingsActivity(
     }
 
     override fun onPreferenceDataStoreChanged(store: PreferenceDataStore, key: String) {
-        if (key != Key.PROFILE_DIRTY) {
+        if (key != Key.PROFILE_DIRTY && key != ROUTE_PROTOCOL_SELECTOR) {
             DataStore.dirty = true
         }
+        if (::routeProtocolPreference.isInitialized && key == Key.ROUTE_PROTOCOL) {
+            routeProtocolPreference.value = routeProtocolSelectorValue(DataStore.routeProtocol)
+        }
+        if (::routeWifiSsidPreference.isInitialized && key == Key.ROUTE_NETWORK_TYPE) {
+            updateWifiSsidVisibility()
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != WIFI_LOCATION_PERMISSION_REQUEST_CODE || !pendingWifiPermissionSave) {
+            return
+        }
+        pendingWifiPermissionSave = false
+        runOnDefaultDispatcher {
+            if (
+                permissions.contains(Manifest.permission.ACCESS_FINE_LOCATION) &&
+                shouldRequestForegroundWifiPermission()
+            ) {
+                persistAndExit()
+            } else if (permissions.contains(Manifest.permission.ACCESS_BACKGROUND_LOCATION)) {
+                persistAndExit()
+            } else if (shouldRequestBackgroundWifiPermission()) {
+                onMainDispatcher {
+                    requestBackgroundWifiPermissionThenSave()
+                }
+            } else {
+                persistAndExit()
+            }
+        }
+    }
+
+    private fun updateWifiSsidVisibility() {
+        val isVisible = RuleEntity.isWifiIdentityVisible(DataStore.routeNetworkType)
+        routeWifiSsidPreference.isVisible = isVisible
+        routeWifiBssidPreference.isVisible = isVisible
+    }
+
+    private fun hasActiveWifiIdentity(): Boolean {
+        if (!RuleEntity.isWifiIdentityVisible(DataStore.routeNetworkType)) {
+            return false
+        }
+        return RuleEntity.normalizeWifiSsidList(DataStore.routeWifiSsid).isNotEmpty() ||
+            RuleEntity.normalizeWifiBssidList(DataStore.routeWifiBssid).isNotEmpty()
+    }
+
+    private fun shouldRequestForegroundWifiPermission(): Boolean {
+        if (!hasActiveWifiIdentity()) {
+            return false
+        }
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        ) != PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun shouldRequestBackgroundWifiPermission(): Boolean {
+        if (!hasActiveWifiIdentity() ||
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            shouldRequestForegroundWifiPermission()
+        ) {
+            return false
+        }
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+        ) != PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestBackgroundWifiPermissionThenSave() {
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
+            pendingWifiPermissionSave = true
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+                WIFI_LOCATION_PERMISSION_REQUEST_CODE,
+            )
+            return
+        }
+
+        pendingWifiBackgroundPermissionSave = true
+        val allowAllTheTimeLabel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            packageManager.backgroundPermissionOptionLabel
+        } else {
+            getString(R.string.wifi_background_location_permission_allow_all_the_time)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.wifi_background_location_permission_title)
+            .setMessage(
+                getString(
+                    R.string.wifi_background_location_permission_message,
+                    allowAllTheTimeLabel,
+                )
+            )
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                requestBackgroundLocationSettings.launch(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", packageName, null)
+                    }
+                )
+            }
+            .setNegativeButton(R.string.wifi_background_location_permission_continue_without) { _, _ ->
+                pendingWifiBackgroundPermissionSave = false
+                runOnDefaultDispatcher {
+                    persistAndExit()
+                }
+            }
+            .show()
     }
 
     class MyPreferenceFragmentCompat : PreferenceFragmentCompat() {
@@ -375,6 +648,7 @@ class RouteSettingsActivity(
             activity?.apply {
                 if (displayPreferenceDialog(preference)) return
             }
+            if (showMaterialEditTextPreferenceDialog(preference)) return
             super.onDisplayPreferenceDialog(preference)
         }
 
@@ -389,6 +663,45 @@ class RouteSettingsActivity(
             } else {
                 "\u2022".repeat(text.length)
             }
+        }
+
+    }
+
+    object MultiSelectSummaryProvider : Preference.SummaryProvider<MultiSelectListPreference> {
+
+        override fun provideSummary(preference: MultiSelectListPreference): CharSequence {
+            val values = preference.values
+            if (values.isEmpty()) {
+                return preference.context.getString(androidx.preference.R.string.not_set)
+            }
+
+            val labels = preference.entryValues
+                ?.mapIndexedNotNull { index, value ->
+                    value?.toString()?.takeIf(values::contains)?.let {
+                        preference.entries?.getOrNull(index)?.toString() ?: it
+                    }
+                }
+                .orEmpty()
+
+            return labels.joinToString()
+        }
+
+    }
+
+    object RouteProtocolSummaryProvider : Preference.SummaryProvider<SimpleMenuPreference> {
+
+        override fun provideSummary(preference: SimpleMenuPreference): CharSequence {
+            val protocol = DataStore.routeProtocol
+            if (protocol.isBlank()) {
+                return preference.context.getString(androidx.preference.R.string.not_set)
+            }
+
+            val index = preference.entryValues.indexOf(protocol)
+            if (index >= 0) {
+                return preference.entries.getOrNull(index) ?: protocol
+            }
+
+            return protocol
         }
 
     }

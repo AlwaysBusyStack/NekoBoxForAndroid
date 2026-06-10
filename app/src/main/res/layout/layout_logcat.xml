@@ -11,12 +11,12 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
 
-    <LinearLayout
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:padding="8dp">
 
-        <ScrollView
+        <io.nekohasekai.sagernet.widget.DraggableScrollView
             android:id="@+id/scroolview"
             android:layout_width="match_parent"
             android:layout_height="match_parent">
@@ -31,8 +31,28 @@
                 android:gravity="start|top"
                 android:textIsSelectable="true"
                 tools:ignore="LabelFor" />
-        </ScrollView>
-    </LinearLayout>
+        </io.nekohasekai.sagernet.widget.DraggableScrollView>
+
+        <FrameLayout
+            android:id="@+id/scrollbar_track_container"
+            android:layout_width="16dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="end"
+            android:paddingHorizontal="2dp">
+
+            <View
+                android:id="@+id/scrollbar_track"
+                android:layout_width="8dp"
+                android:layout_height="match_parent"
+                android:layout_gravity="center_horizontal" />
+
+            <View
+                android:id="@+id/scrollbar_thumb"
+                android:layout_width="12dp"
+                android:layout_height="48dp"
+                android:layout_gravity="center_horizontal" />
+        </FrameLayout>
+    </FrameLayout>
 
 
 </LinearLayout>

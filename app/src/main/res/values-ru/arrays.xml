@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string-array name="masterdnsvpn_resolver_balancing_entry">
+        <item>По кругу</item>
+        <item>Случайно</item>
+        <item>Меньше потерь</item>
+        <item>Меньше задержка</item>
+        <item>Гибридная</item>
+        <item>Потери, потом задержка</item>
+        <item>Меньше потерь, случайно</item>
+        <item>Меньше потерь, по кругу</item>
+    </string-array>
+
+    <string-array name="masterdnsvpn_compression_entry">
+        <item>Выкл.</item>
+        <item>ZSTD</item>
+        <item>LZ4</item>
+        <item>ZLIB</item>
+    </string-array>
+
+    <string-array name="masterdnsvpn_encryption_method_entry">
+        <item>Нет</item>
+        <item>XOR</item>
+        <item>ChaCha20</item>
+        <item>AES-128-GCM</item>
+        <item>AES-192-GCM</item>
+        <item>AES-256-GCM</item>
+    </string-array>
+
+    <string-array name="route_network_type_entry">
+        <item>Wi-Fi</item>
+        <item>@string/cellular</item>
+        <item>Ethernet</item>
+        <item>@string/routing_region_other</item>
+    </string-array>
+
+    <string-array name="route_protocol_entry">
+        <item>TCP и UDP</item>
+        <item>TCP</item>
+        <item>UDP</item>
+    </string-array>
+
+    <string-array name="networks_entry">
+        <item>TCP</item>
+        <item>KCP</item>
+        <item>WebSocket</item>
+        <item>HTTP/2</item>
+        <item>QUIC</item>
+        <item>gRPC</item>
+        <item>HTTP Upgrade</item>
+        <item>XHTTP</item>
+    </string-array>
+
+    <string-array name="kcp_headers_entry">
+        <item>@string/none</item>
+        <item>SRTP</item>
+        <item>uTP</item>
+        <item>WeChat Video</item>
+        <item>DTLS</item>
+        <item>WireGuard</item>
+    </string-array>
+
+    <string-array name="xhttp_mode_entry">
+        <item>Авто</item>
+        <item>Packet UP</item>
+        <item>Stream UP</item>
+        <item>Stream One</item>
+    </string-array>
+
+    <string-array name="xhttp_uplink_data_placement_entry">
+        <item>По умолчанию: тело</item>
+        <item>Заголовок</item>
+        <item>Cookie</item>
+    </string-array>
+
+    <string-array name="xhttp_session_placement_entry">
+        <item>По умолчанию: путь</item>
+        <item>Заголовок</item>
+        <item>Query</item>
+        <item>Cookie</item>
+    </string-array>
+
+    <string-array name="xhttp_padding_method_entry">
+        <item>По умолчанию: X</item>
+        <item>Токен (Хаффман)</item>
+    </string-array>
+
+    <string-array name="xhttp_x_padding_placement_entry">
+        <item>По умолчанию</item>
+        <item>queryInHeader</item>
+        <item>Заголовок</item>
+        <item>Cookie</item>
+        <item>Query</item>
+        <item>Путь</item>
+        <item>Тело</item>
+    </string-array>
+
+    <string-array name="xhttp_uplink_http_method_entry">
+        <item>По умолчанию: POST</item>
+        <item>GET</item>
+        <item>PUT</item>
+        <item>PATCH</item>
+        <item>DELETE</item>
+    </string-array>
+
+    <string-array name="xhttp_seq_placement_entry">
+        <item>По умолчанию: путь</item>
+        <item>Заголовок</item>
+        <item>Query</item>
+        <item>Cookie</item>
+    </string-array>
+
+    <string-array name="trojan_go_networks_entry">
+        <item>@string/none</item>
+        <item>WebSocket</item>
+    </string-array>
+
+    <string-array name="trojan_go_security_entry">
+        <item>@string/none</item>
+        <item>Shadowsocks</item>
+    </string-array>
+
+    <string-array name="vmess_encryption_entry">
+        <item>ChaCha20-Poly1305</item>
+        <item>AES-128-GCM</item>
+        <item>Авто</item>
+        <item>@string/none</item>
+        <item>Ноль</item>
+    </string-array>
+
+    <string-array name="transport_layer_encryption_entry">
+        <item>@string/none</item>
+        <item>TLS</item>
+        <item>REALITY</item>
+    </string-array>
+
+    <string-array name="hysteria_auth_type">
+        <item>@string/plugin_disabled</item>
+        <item>Строка</item>
+        <item>Base64</item>
+    </string-array>
+
+    <string-array name="tun_implementation">
+        <item>gVisor</item>
+        <item>Системный</item>
+        <item>Смешанный</item>
+    </string-array>
+
+    <string-array name="hysteria_protocol">
+        <item>UDP</item>
+        <item>FakeTCP (требуется root)</item>
+        <item>WeChat Video</item>
+    </string-array>
+
+    <string-array name="packet_encoding_entry">
+        <item>@string/none</item>
+        <item>Пакет</item>
+        <item>XUDP</item>
+    </string-array>
+
+    <string-array name="dns_network_entry">
+        <item>Авто</item>
+        <item>IPv6 предпочтительно</item>
+        <item>IPv4 предпочтительно</item>
+        <item>Только IPv4</item>
+        <item>Только IPv6</item>
+    </string-array>
+
+    <string-array name="utls_fingerprint_entry">
+        <item></item>
+        <item>Chrome</item>
+        <item>Firefox</item>
+        <item>Edge</item>
+        <item>Safari</item>
+        <item>360</item>
+        <item>QQ</item>
+        <item>iOS</item>
+        <item>Android</item>
+        <item>Случайный</item>
+        <item>Случайный каждый раз</item>
+    </string-array>
+
+    <string-array name="trusttunnel_protocol_entry">
+        <item>HTTPS</item>
+        <item>Предпочитать QUIC</item>
+        <item>Принудительный QUIC</item>
+    </string-array>
+
+    <string-array name="trusttunnel_protocol_value">
+        <item>https</item>
+        <item>prefer_quic</item>
+        <item>force_quic</item>
+    </string-array>
+
+    <string-array name="trusttunnel_cronet_stack_entry">
+        <item>Нет</item>
+        <item>Для HTTPS</item>
+        <item>Для QUIC</item>
+        <item>Для HTTPS и QUIC</item>
+    </string-array>
+
+    <string-array name="trusttunnel_cronet_stack_value">
+        <item>no</item>
+        <item>https</item>
+        <item>quic</item>
+        <item>https_quic</item>
+    </string-array>
+
+    <string-array name="tuic_udp_relay_mode_entry">
+        <item>Нативный</item>
+        <item>QUIC</item>
+    </string-array>
+
+    <string-array name="tuic_congestion_controller_entry">
+        <item>CUBIC</item>
+        <item>New Reno</item>
+        <item>BBR</item>
+    </string-array>
+
+    <string-array name="log_level_entry">
+        <item>@string/none</item>
+        <item>Предупреждения</item>
+        <item>Информация</item>
+        <item>Отладка</item>
+        <item>Трассировка</item>
+    </string-array>
+
+</resources>

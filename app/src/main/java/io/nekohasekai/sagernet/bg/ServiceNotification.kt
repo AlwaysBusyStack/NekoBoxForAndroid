@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
 import android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
 import android.os.Build
 import android.text.format.Formatter
@@ -188,10 +189,18 @@ class ServiceNotification(
         useBuilder {
             try {
                 if (Build.VERSION.SDK_INT >= 34) {
+                    val foregroundServiceType = if (
+                        service.hasActiveWifiRules() &&
+                        SagerNet.application.nativeInterface.canReadWifiIdentityInBackground()
+                    ) {
+                        FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED or FOREGROUND_SERVICE_TYPE_LOCATION
+                    } else {
+                        FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
+                    }
                     (service as Service).startForeground(
                         notificationId,
                         it.build(),
-                        FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
+                        foregroundServiceType
                     )
                 } else {
                     (service as Service).startForeground(notificationId, it.build())

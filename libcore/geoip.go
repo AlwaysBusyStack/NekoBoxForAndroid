@@ -1,6 +1,7 @@
 package libcore
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -14,15 +15,28 @@ import (
 
 type geoip struct {
 	geoipReader *maxminddb.Reader
+	datEntries  map[string]*v2geoIP
 }
 
 func (g *geoip) Open(path string) error {
 	geoipReader, err := maxminddb.Open(path)
-	g.geoipReader = geoipReader
-	return err
+	if err == nil {
+		g.geoipReader = geoipReader
+		return nil
+	}
+	datEntries, _, datErr := loadV2GeoIP(path)
+	if datErr != nil {
+		return fmt.Errorf("open geoip as db: %w; open geoip as dat: %w", err, datErr)
+	}
+	g.datEntries = datEntries
+	return nil
 }
 
 func (g *geoip) Rules(countryCode string) ([]option.HeadlessRule, error) {
+	countryCode = strings.ToLower(strings.TrimSpace(countryCode))
+	if g.datEntries != nil {
+		return g.datRules(countryCode)
+	}
 	networks := g.geoipReader.Networks(maxminddb.SkipAliasedNetworks)
 	countryMap := make(map[string][]*net.IPNet)
 	var (
@@ -38,7 +52,7 @@ func (g *geoip) Rules(countryCode string) ([]option.HeadlessRule, error) {
 		countryMap[nextCountryCode] = append(countryMap[nextCountryCode], ipNet)
 	}
 
-	ipNets := countryMap[strings.ToLower(countryCode)]
+	ipNets := countryMap[countryCode]
 
 	if len(ipNets) == 0 {
 		return nil, fmt.Errorf("no networks found for country code: %s", countryCode)
@@ -58,13 +72,41 @@ func (g *geoip) Rules(countryCode string) ([]option.HeadlessRule, error) {
 	}, nil
 }
 
+func (g *geoip) datRules(countryCode string) ([]option.HeadlessRule, error) {
+	entry := g.datEntries[countryCode]
+	if entry == nil || len(entry.CIDR) == 0 {
+		return nil, fmt.Errorf("no networks found for country code: %s", countryCode)
+	}
+
+	var headlessRule option.DefaultHeadlessRule
+	headlessRule.IPCIDR = make([]string, 0, len(entry.CIDR))
+	for _, cidr := range entry.CIDR {
+		cidrString, err := cidrString(cidr)
+		if err != nil {
+			return nil, err
+		}
+		headlessRule.IPCIDR = append(headlessRule.IPCIDR, cidrString)
+	}
+
+	return []option.HeadlessRule{
+		{
+			Type:           C.RuleTypeDefault,
+			DefaultOptions: headlessRule,
+		},
+	}, nil
+}
+
 func init() {
-	nekoutils.GetGeoIPHeadlessRules = func(name string) ([]option.HeadlessRule, error) {
+	nekoutils.GetGeoIPHeadlessRules = func(name string) (rules []option.HeadlessRule, err error) {
 		g := new(geoip)
 		if err := g.Open(filepath.Join(externalAssetsPath, "geoip.db")); err != nil {
 			return nil, err
 		}
-		defer g.geoipReader.Close()
+		if g.geoipReader != nil {
+			defer func() {
+				err = errors.Join(err, g.geoipReader.Close())
+			}()
+		}
 		return g.Rules(name)
 	}
 }

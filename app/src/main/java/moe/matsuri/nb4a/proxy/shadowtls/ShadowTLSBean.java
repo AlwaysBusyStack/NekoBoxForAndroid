@@ -42,6 +42,12 @@ public class ShadowTLSBean extends StandardV2RayBean {
 
     @NotNull
     @Override
+    public String getHash() {
+        return buildTypedHash("shadowtls");
+    }
+
+    @NotNull
+    @Override
     public ShadowTLSBean clone() {
         return KryoConverters.deserialize(new ShadowTLSBean(), KryoConverters.serialize(this));
     }

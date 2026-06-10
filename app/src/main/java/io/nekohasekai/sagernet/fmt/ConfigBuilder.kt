@@ -1,32 +1,50 @@
 package io.nekohasekai.sagernet.fmt
 
+import android.os.SystemClock
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
+import com.google.gson.JsonObject
 import io.nekohasekai.sagernet.*
 import io.nekohasekai.sagernet.bg.VpnService
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.ProxyEntity
 import io.nekohasekai.sagernet.database.ProxyEntity.Companion.TYPE_CONFIG
+import io.nekohasekai.sagernet.database.RuleEntity
 import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.fmt.ConfigBuildResult.IndexEntity
 import io.nekohasekai.sagernet.fmt.hysteria.HysteriaBean
 import io.nekohasekai.sagernet.fmt.hysteria.buildSingBoxOutboundHysteriaBean
 import io.nekohasekai.sagernet.fmt.internal.ChainBean
+import io.nekohasekai.sagernet.fmt.internal.ProxySetBean
+import io.nekohasekai.sagernet.fmt.internal.buildSingBoxOutboundProxySetBean
+import io.nekohasekai.sagernet.fmt.masterdns.MasterDnsVPNBean
+import io.nekohasekai.sagernet.fmt.masterdns.buildSingBoxOutboundMasterDnsVPNBean
+import io.nekohasekai.sagernet.fmt.mieru.MieruBean
 import io.nekohasekai.sagernet.fmt.shadowsocks.ShadowsocksBean
 import io.nekohasekai.sagernet.fmt.shadowsocks.buildSingBoxOutboundShadowsocksBean
+import io.nekohasekai.sagernet.fmt.snell.SnellBean
+import io.nekohasekai.sagernet.fmt.snell.buildSingBoxOutboundSnellBean
 import io.nekohasekai.sagernet.fmt.socks.SOCKSBean
 import io.nekohasekai.sagernet.fmt.socks.buildSingBoxOutboundSocksBean
 import io.nekohasekai.sagernet.fmt.ssh.SSHBean
 import io.nekohasekai.sagernet.fmt.ssh.buildSingBoxOutboundSSHBean
+import io.nekohasekai.sagernet.fmt.trusttunnel.TrustTunnelBean
+import io.nekohasekai.sagernet.fmt.trusttunnel.buildSingBoxOutboundTrustTunnelBean
 import io.nekohasekai.sagernet.fmt.tuic.TuicBean
 import io.nekohasekai.sagernet.fmt.tuic.buildSingBoxOutboundTuicBean
 import io.nekohasekai.sagernet.fmt.juicity.JuicityBean
 import io.nekohasekai.sagernet.fmt.juicity.buildSingBoxOutboundJuicityBean
+import io.nekohasekai.sagernet.fmt.naive.NaiveBean
+import io.nekohasekai.sagernet.fmt.naive.buildSingBoxOutboundNaiveBean
 import io.nekohasekai.sagernet.fmt.v2ray.StandardV2RayBean
 import io.nekohasekai.sagernet.fmt.v2ray.buildSingBoxOutboundStandardV2RayBean
 import io.nekohasekai.sagernet.fmt.shadowsocksr.ShadowsocksRBean
 import io.nekohasekai.sagernet.fmt.shadowsocksr.buildSingBoxOutboundShadowsocksRBean
+import io.nekohasekai.sagernet.fmt.wireguard.AmneziaWGBean
 import io.nekohasekai.sagernet.fmt.wireguard.WireGuardBean
-import io.nekohasekai.sagernet.fmt.wireguard.buildSingBoxOutboundWireguardBean
+import io.nekohasekai.sagernet.fmt.wireguard.buildSingBoxEndpointWireguardBean
+import io.nekohasekai.sagernet.fmt.wireguard.buildSingBoxOutboundAwgBean
 import io.nekohasekai.sagernet.ktx.isIpAddress
 import io.nekohasekai.sagernet.ktx.mkPort
 import io.nekohasekai.sagernet.utils.PackageCache
@@ -35,14 +53,19 @@ import moe.matsuri.nb4a.SingBoxOptions.*
 import moe.matsuri.nb4a.plugin.Plugins
 import moe.matsuri.nb4a.proxy.anytls.AnyTLSBean
 import moe.matsuri.nb4a.proxy.anytls.buildSingBoxOutboundAnyTLSBean
+import moe.matsuri.nb4a.proxy.byedpi.ByeDPIBean
+import moe.matsuri.nb4a.proxy.byedpi.buildSingBoxOutboundByeDPIBean
 import moe.matsuri.nb4a.proxy.config.ConfigBean
 import moe.matsuri.nb4a.proxy.shadowtls.ShadowTLSBean
 import moe.matsuri.nb4a.proxy.shadowtls.buildSingBoxOutboundShadowTLSBean
 import moe.matsuri.nb4a.utils.JavaUtil.gson
+import moe.matsuri.nb4a.utils.NGUtil.isIpv4Address
+import moe.matsuri.nb4a.utils.NGUtil.isPureIpAddress
 import moe.matsuri.nb4a.utils.Util
 import moe.matsuri.nb4a.utils.listByLineOrComma
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
+const val TAG_TUN = "tun-in"
 const val TAG_MIXED = "mixed-in"
 
 const val TAG_PROXY = "proxy"
@@ -50,8 +73,16 @@ const val TAG_DIRECT = "direct"
 const val TAG_BYPASS = "bypass"
 const val TAG_BLOCK = "block"
 const val TAG_FRAGMENT = "fragment"
+const val TAG_FRAGMENT_EXCLAVE = "fragment-exclave"
+const val TAG_BYEDPI_FRAGMENT = "byedpi-fragment"
 
 const val LOCALHOST = "127.0.0.1"
+
+private fun showConfigToast(message: CharSequence, duration: Int) {
+    Handler(Looper.getMainLooper()).post {
+        Toast.makeText(SagerNet.application, message, duration).show()
+    }
+}
 
 class ConfigBuildResult(
     var config: String,
@@ -64,8 +95,44 @@ class ConfigBuildResult(
     data class IndexEntity(var chain: LinkedHashMap<Int, ProxyEntity>)
 }
 
+private fun buildDomainResolverConfig(server: String, strategy: String = ""): Map<String, Any> {
+    return linkedMapOf<String, Any>().apply {
+        put("server", server)
+        if (strategy.isNotBlank()) {
+            put("strategy", strategy)
+        }
+    }
+}
+
+private fun validateByeDPIChainProfile(profile: ProxyEntity, context: String) {
+    if (profile.isByeDPI()) return
+    when (val bean = profile.requireBean()) {
+        is ChainBean -> {
+            val profiles = SagerDatabase.proxyDao.getEntities(bean.proxies).associateBy { it.id }
+            var seenByeDPI = false
+            bean.proxies.forEachIndexed { index, proxyId ->
+                val child = profiles[proxyId] ?: return@forEachIndexed
+                if (child.containsByeDPI()) {
+                    if (index != 0 || !child.startsWithByeDPI() || seenByeDPI) {
+                        error("ByeDPI must be the first profile in $context")
+                    }
+                    seenByeDPI = true
+                }
+                validateByeDPIChainProfile(child, context)
+            }
+        }
+
+        is ProxySetBean -> {
+            // Proxy sets silently skip ByeDPI candidates during member resolution.
+        }
+    }
+}
+
 fun buildConfig(
-    proxy: ProxyEntity, forTest: Boolean = false, forExport: Boolean = false
+    proxy: ProxyEntity,
+    forTest: Boolean = false,
+    forExport: Boolean = false,
+    urlTestCacheKey: String = proxy.id.toString(),
 ): ConfigBuildResult {
 
     if (proxy.type == TYPE_CONFIG) {
@@ -73,7 +140,7 @@ fun buildConfig(
         if (bean.type == 0) {
             val tagProxy = proxy.displayName()
             return ConfigBuildResult(
-                bean.config,
+                if (forTest) bean.config.withUrlTestCacheFile(urlTestCacheKey) else bean.config,
                 listOf(),
                 proxy.id, //
                 mapOf(tagProxy to listOf(proxy)), //
@@ -86,8 +153,77 @@ fun buildConfig(
     val trafficMap = HashMap<String, List<ProxyEntity>>()
     val tagMap = HashMap<Long, String>()
     val globalOutbounds = HashMap<Long, String>()
-    val readableNames = mutableSetOf(TAG_DIRECT, TAG_BYPASS, TAG_BLOCK, TAG_FRAGMENT, TAG_MIXED, TAG_PROXY)
+    val readableNames = mutableSetOf(
+        TAG_DIRECT,
+        TAG_BYPASS,
+        TAG_BLOCK,
+        TAG_FRAGMENT,
+        TAG_FRAGMENT_EXCLAVE,
+        TAG_BYEDPI_FRAGMENT,
+        TAG_MIXED,
+        TAG_PROXY
+    )
     val group = SagerDatabase.groupDao.getById(proxy.groupId)
+    val frontProxy = group?.frontProxy?.let { SagerDatabase.proxyDao.getById(it) }
+    val landingProxy = group?.landingProxy?.let { SagerDatabase.proxyDao.getById(it) }
+    val groupForceUTLS = group?.forceUTLS?.takeIf { it.isNotBlank() }
+    val trafficFragmentation = DataStore.trafficFragmentation
+    val trafficFragmentationTag = when (trafficFragmentation) {
+        TrafficFragmentation.STARIFLY -> TAG_FRAGMENT
+        TrafficFragmentation.EXCLAVE -> TAG_FRAGMENT_EXCLAVE
+        TrafficFragmentation.BYEDPI -> TAG_BYEDPI_FRAGMENT
+        else -> null
+    }
+
+    fun SingBoxOption.hasEnabledTLS(): Boolean {
+        val outboundMap = asMap()
+        val tlsOptions = outboundMap["tls"] as? Map<*, *>
+        return tlsOptions?.get("enabled") == true
+    }
+
+    fun AbstractBean.isTLSBased(): Boolean {
+        return when (this) {
+            is StandardV2RayBean -> security == "tls" || security == "reality"
+            is ShadowTLSBean, is AnyTLSBean -> true
+            is NaiveBean -> proto == "https"
+            else -> false
+        }
+    }
+
+    fun AbstractBean.isTCPBased(): Boolean {
+        return when (this) {
+            is StandardV2RayBean -> type !in setOf("kcp", "quic")
+            is NaiveBean -> proto != "quic"
+            is MieruBean -> protocol != "UDP"
+            else -> canTCPing()
+        }
+    }
+
+    fun shouldApplyTrafficFragmentation(outbound: SingBoxOption, bean: AbstractBean): Boolean {
+        if (trafficFragmentationTag == null) return false
+        if (bean is ByeDPIBean) return false
+        val tlsBased = outbound.hasEnabledTLS() || bean.isTLSBased()
+        return when (trafficFragmentation) {
+            TrafficFragmentation.STARIFLY -> tlsBased
+            TrafficFragmentation.EXCLAVE -> when (DataStore.exclaveFragmentMethod) {
+                ExclaveFragmentationMethod.TCP_SEGMENTATION -> bean.isTCPBased()
+                ExclaveFragmentationMethod.TLS_RECORD_FRAGMENTATION_AND_TCP_SEGMENTATION ->
+                    tlsBased || bean.isTCPBased()
+                else -> tlsBased
+            }
+            else -> true
+        }
+    }
+
+    validateByeDPIChainProfile(proxy, "chains")
+    frontProxy?.let {
+        if (!it.startsWithByeDPI() && it.containsByeDPI()) {
+            error("ByeDPI must be the first profile in front proxy chains")
+        }
+    }
+    if (landingProxy?.containsByeDPI() == true) {
+        error("ByeDPI is not allowed as landing proxy")
+    }
 
     fun ProxyEntity.resolveChainInternal(): MutableList<ProxyEntity> {
         val bean = requireBean()
@@ -97,9 +233,39 @@ fun buildConfig(
             val beanList = ArrayList<ProxyEntity>()
             for (proxyId in bean.proxies) {
                 val item = beansMap[proxyId] ?: continue
+                if (item.type == ProxyEntity.TYPE_MASTERDNSVPN) {
+                    error("MasterDnsVPN is not allowed in proxy chains")
+                }
                 beanList.addAll(item.resolveChainInternal())
             }
             return beanList.asReversed()
+        }
+        if (bean is ProxySetBean) {
+            val beans = when (bean.type) {
+                ProxySetBean.TYPE_LIST -> SagerDatabase.proxyDao.getEntities(bean.proxies)
+                ProxySetBean.TYPE_GROUP -> SagerDatabase.proxyDao.getByGroup(bean.groupId)
+                else -> throw IllegalStateException("invalid proxy set type ${bean.type}")
+            }
+            val beansMap = beans.associateBy { it.id }
+            val beanList = ArrayList<ProxyEntity>()
+            val regex = bean.groupFilterNotRegex.takeIf { it.isNotBlank() }?.toRegex()
+            val ids = if (bean.type == ProxySetBean.TYPE_LIST) bean.proxies else beans.map { it.id }
+            for (proxyId in ids) {
+                val item = beansMap[proxyId] ?: continue
+                if (item.id == id) continue
+                if (item.type == ProxyEntity.TYPE_MASTERDNSVPN) continue
+                if (regex != null && !regex.containsMatchIn(item.displayName())) continue
+                if (item.containsByeDPI()) continue
+                when (item.type) {
+                    ProxyEntity.TYPE_PROXY_SET -> error("Nested proxy set are not supported")
+                    ProxyEntity.TYPE_CHAIN -> if (bean.type == ProxySetBean.TYPE_GROUP) {
+                        error("Chain is incompatible with group bean")
+                    }
+                }
+                beanList.add(item)
+            }
+            beanList.add(this)
+            return beanList
         }
         return mutableListOf(this)
     }
@@ -115,17 +281,47 @@ fun buildConfig(
     }
 
     fun ProxyEntity.resolveChain(): MutableList<ProxyEntity> {
-        val thisGroup = SagerDatabase.groupDao.getById(groupId)
-        val frontProxy = thisGroup?.frontProxy?.let { SagerDatabase.proxyDao.getById(it) }
-        val landingProxy = thisGroup?.landingProxy?.let { SagerDatabase.proxyDao.getById(it) }
         val list = resolveChainInternal()
         if (frontProxy != null) {
-            list.add(frontProxy)
+            list.addAll(frontProxy.resolveChainInternal())
         }
         if (landingProxy != null) {
-            list.add(0, landingProxy)
+            list.addAll(0, landingProxy.resolveChainInternal())
         }
         return list
+    }
+
+    val selectedGroupProfileIds = if (group == null) {
+        emptySet()
+    } else {
+        buildSet {
+            addAll(SagerDatabase.proxyDao.getIdsByGroup(group.id))
+            frontProxy?.resolveChainInternal()?.forEach { add(it.id) }
+            landingProxy?.resolveChainInternal()?.forEach { add(it.id) }
+        }
+    }
+    val groupForceUTLSProfileIds = if (groupForceUTLS == null) emptySet() else selectedGroupProfileIds
+
+    fun AbstractBean.allowsUTLS(): Boolean {
+        return when (this) {
+            is StandardV2RayBean -> security == "tls" || security == "reality"
+            is AnyTLSBean -> true
+            else -> false
+        }
+    }
+
+    fun SingBoxOption.applyGroupForceUTLS(bean: AbstractBean, proxyEntity: ProxyEntity, enabled: Boolean) {
+        val fingerprint = groupForceUTLS ?: return
+        if (!enabled || proxyEntity.id !in groupForceUTLSProfileIds || !bean.allowsUTLS()) return
+        val tls = try {
+            javaClass.getField("tls").get(this) as? OutboundTLSOptions
+        } catch (_: Exception) {
+            null
+        } ?: return
+        tls.utls = OutboundUTLSOptions().apply {
+            this.enabled = true
+            this.fingerprint = fingerprint
+        }
     }
 
     val extraRules = if (forTest) listOf() else SagerDatabase.rulesDao.enabledRules()
@@ -133,6 +329,7 @@ fun buildConfig(
         if (forTest) mapOf() else SagerDatabase.proxyDao.getEntities(extraRules.mapNotNull { rule ->
             rule.outbound.takeIf { it > 0 && it != proxy.id }
         }.toHashSet().toList()).associateBy { it.id }
+    extraProxies.values.forEach { validateByeDPIChainProfile(it, "route outbounds") }
     val buildSelector = !forTest && group?.isSelector == true && !forExport
     val userDNSRuleList = mutableListOf<DNSRule_DefaultOptions>()
     val domainListDNSDirectForce = mutableListOf<String>()
@@ -146,7 +343,6 @@ fun buildConfig(
     val enableDnsRouting = DataStore.enableDnsRouting
     val useFakeDns = DataStore.enableFakeDns && !forTest
     val needSniff = DataStore.trafficSniffing > 0
-    val needSniffOverride = DataStore.trafficSniffing == 2
     val externalIndexMap = ArrayList<IndexEntity>()
     val ipv6Mode = if (forTest) IPv6Mode.ENABLE else DataStore.ipv6Mode
 
@@ -173,8 +369,13 @@ fun buildConfig(
                 
                 if (DataStore.enableClashAPI) {
                     clash_api = ClashAPIOptions().apply {
-                        external_controller = "127.0.0.1:9090"
-                        external_ui = "../files/yacd"
+                        external_controller = when (DataStore.hideClashApi) {
+                            true -> "unix://../cache/${DataStore.CLASH_API_SOCKET_NAME}"
+                            false -> "${DataStore.CLASH_API_HOST}:${DataStore.CLASH_API_PORT}"
+                        }
+                        external_ui = DataStore.CLASH_API_EXTERNAL_UI
+                        external_ui_download_url = DataStore.CLASH_API_EXTERNAL_UI_DOWNLOAD_URL
+                        secret = DataStore.clashApiSecret
                     }
                 }
             }
@@ -215,7 +416,7 @@ fun buildConfig(
         if (!forTest) {
             if (isVPN) inbounds.add(Inbound_TunOptions().apply {
                 type = "tun"
-                tag = "tun-in"
+                tag = TAG_TUN
                 interface_name = "tun0"
                 stack = when (DataStore.tunImplementation) {
                     TunImplementation.GVISOR -> "gvisor"
@@ -224,38 +425,38 @@ fun buildConfig(
                 }
                 endpoint_independent_nat = true
                 mtu = DataStore.mtu
-                domain_strategy = genDomainStrategy(DataStore.resolveDestination)
                 auto_route = true
                 strict_route = DataStore.strictRoute
-                sniff = needSniff
-                sniff_override_destination = needSniffOverride
-                when (ipv6Mode) {
-                    IPv6Mode.DISABLE -> {
-                        inet4_address = listOf(VpnService.PRIVATE_VLAN4_CLIENT + "/28")
-                    }
-
-                    IPv6Mode.ONLY -> {
-                        inet6_address = listOf(VpnService.PRIVATE_VLAN6_CLIENT + "/126")
-                    }
-
-                    else -> {
-                        inet4_address = listOf(VpnService.PRIVATE_VLAN4_CLIENT + "/28")
-                        inet6_address = listOf(VpnService.PRIVATE_VLAN6_CLIENT + "/126")
-                    }
+                address = when (ipv6Mode) {
+                    IPv6Mode.DISABLE -> listOf(VpnService.PRIVATE_VLAN4_CLIENT + "/28")
+                    IPv6Mode.ONLY -> listOf(VpnService.PRIVATE_VLAN6_CLIENT + "/126")
+                    else -> listOf(
+                        VpnService.PRIVATE_VLAN4_CLIENT + "/28",
+                        VpnService.PRIVATE_VLAN6_CLIENT + "/126"
+                    )
                 }
             })
-            inbounds.add(Inbound_MixedOptions().apply {
-                type = "mixed"
-                tag = TAG_MIXED
-                listen = bind
-                listen_port = DataStore.mixedPort
-                domain_strategy = genDomainStrategy(DataStore.resolveDestination)
-                sniff = needSniff
-                sniff_override_destination = needSniffOverride
-            })
+
+            if (!isVPN || DataStore.requireProxyInVPN) {
+                inbounds.add(Inbound_MixedOptions().apply {
+                    type = "mixed"
+                    tag = TAG_MIXED
+                    listen = bind
+                    listen_port = DataStore.mixedPort
+                    if (DataStore.mixedUsername.isNotBlank() || DataStore.mixedPassword.isNotBlank()) {
+                        users = listOf(
+                            User().apply {
+                                username = DataStore.mixedUsername
+                                password = DataStore.mixedPassword
+                            },
+                        )
+                    }
+                })
+            }
         }
 
         outbounds = mutableListOf()
+        endpoints = mutableListOf()
 
         // init routing object
         route = RouteOptions().apply {
@@ -271,12 +472,23 @@ fun buildConfig(
         // returns outbound tag
         @Suppress("UNCHECKED_CAST")
         fun buildChain(
-            chainId: Long, entity: ProxyEntity
+            chainId: Long,
+            entity: ProxyEntity,
+            applyGroupForceUTLS: Boolean,
+            includeGroupProxyChain: Boolean,
         ): String {
-            val profileList = entity.resolveChain()
+            val profileList = if (includeGroupProxyChain) {
+                entity.resolveChain()
+            } else {
+                entity.resolveChainInternal()
+            }
             val chainTrafficSet = HashSet<ProxyEntity>().apply {
-                plusAssign(profileList)
-                add(entity)
+                if (entity.type == ProxyEntity.TYPE_CHAIN || entity.type == ProxyEntity.TYPE_PROXY_SET) {
+                    add(entity)
+                } else {
+                    plusAssign(profileList)
+                    add(entity)
+                }
             }
 
             var currentOutbound: SingBoxOption
@@ -286,52 +498,126 @@ fun buildConfig(
             val externalChainMap = LinkedHashMap<Int, ProxyEntity>()
             externalIndexMap.add(IndexEntity(externalChainMap))
             val chainOutbounds = ArrayList<SingBoxOption>()
+            val outboundsByTag = HashMap<String, SingBoxOption>()
+            val mappingInboundTags = HashMap<Long, String>()
 
             // chainTagOut: v2ray outbound tag for this chain
             var chainTagOut = ""
             val chainTag = "c-$chainId"
             var muxApplied = false
+            var pastChainEntity: ProxyEntity? = null
 
             val defaultServerDomainStrategy = SingBoxOptionsUtil.domainStrategy("server")
+            val isProxySet = entity.type == ProxyEntity.TYPE_PROXY_SET
+
+            fun ProxyEntity.resolveProxySetMembers(): List<ProxyEntity> {
+                if (type != ProxyEntity.TYPE_PROXY_SET) return emptyList()
+                val chain = resolveChainInternal()
+                return if (chain.isEmpty()) emptyList() else chain.dropLast(1)
+            }
+
+            val reservedTags = HashMap<Long, String>()
+
+            fun reserveTag(proxyEntity: ProxyEntity): String {
+                reservedTags[proxyEntity.id]?.let { return it }
+                val tag = readableTag(proxyEntity.displayName())
+                reservedTags[proxyEntity.id] = tag
+                return tag
+            }
+
+            fun SingBoxOption.setDetour(tag: String) {
+                val outboundType = (this as? Outbound)?.type
+                    ?: (_hack_config_map["type"] as? String)
+                    ?: (asMap()["type"] as? String)
+                // A profile-local ByeDPI outbound is already the fragmentation layer.
+                if (outboundType != "byedpi") {
+                    _hack_config_map["detour"] = tag
+                }
+            }
+
+            val proxySetMemberIds = LinkedHashSet<Long>().apply {
+                for (proxyEntity in profileList) {
+                    if (proxyEntity.requireBean() is ProxySetBean) {
+                        for (member in proxyEntity.resolveProxySetMembers()) {
+                            add(member.id)
+                        }
+                    }
+                }
+            }
+            val hasProxySet = proxySetMemberIds.isNotEmpty()
+
+            fun connectChainNode(previousEntity: ProxyEntity, currentTag: String) {
+                if (previousEntity.requireBean() is ProxySetBean) {
+                    for (member in previousEntity.resolveProxySetMembers()) {
+                        val memberTag = checkNotNull(reservedTags[member.id])
+                        outboundsByTag[memberTag]?.setDetour(currentTag)
+                    }
+                    return
+                }
+                if (previousEntity.needExternal()) {
+                    route.rules.add(Rule_DefaultOptions().apply {
+                        inbound = listOf(checkNotNull(mappingInboundTags[previousEntity.id]))
+                        outbound = currentTag
+                    })
+                } else {
+                    val previousTag = checkNotNull(reservedTags[previousEntity.id])
+                    outboundsByTag[previousTag]?.setDetour(currentTag)
+                }
+            }
 
             profileList.forEachIndexed { index, proxyEntity ->
                 val bean = proxyEntity.requireBean()
+                var currentIsEndpoint = false
+                val isProxySetMember = proxySetMemberIds.contains(proxyEntity.id) && bean !is ProxySetBean
+                val isChainNode = !isProxySetMember
 
                 // tagOut: v2ray outbound tag for a profile
                 // profile2 (in) (global)   tag g-(id)
                 // profile1                 tag (chainTag)-(id)
                 // profile0 (out)           tag (chainTag)-(id) / single: "proxy"
-                var tagOut = "$chainTag-${proxyEntity.id}"
+                var tagOut = if (hasProxySet) reserveTag(proxyEntity) else "$chainTag-${proxyEntity.id}"
 
                 // needGlobal: can only contain one?
                 var needGlobal = false
 
                 // first profile set as global
-                if (index == profileList.lastIndex) {
+                if (!hasProxySet && index == profileList.lastIndex) {
                     needGlobal = true
                     tagOut = "g-" + proxyEntity.id
                     bypassDNSBeans += proxyEntity.requireBean()
                 }
 
-                if (index == 0) {
+                if (!hasProxySet && index == 0) {
                     tagOut = readableTag(bean.displayName())
                 }
 
 
                 // chain rules
-                if (index > 0) {
-                    // chain route/proxy rules
-                    if (pastEntity!!.needExternal()) {
-                        route.rules.add(Rule_DefaultOptions().apply {
-                            inbound = listOf(pastInboundTag)
-                            outbound = tagOut
-                        })
+                if (!isProxySet) {
+                    if (hasProxySet) {
+                        if (isChainNode) {
+                            if (pastChainEntity != null) {
+                                connectChainNode(pastChainEntity!!, tagOut)
+                            } else {
+                                chainTagOut = tagOut
+                            }
+                        }
                     } else {
-                        pastOutbound._hack_config_map["detour"] = tagOut
+                        if (index > 0) {
+                            // chain route/proxy rules
+                            if (pastEntity!!.needExternal()) {
+                                route.rules.add(Rule_DefaultOptions().apply {
+                                    inbound = listOf(pastInboundTag)
+                                    outbound = tagOut
+                                })
+                            } else {
+                                pastOutbound.setDetour(tagOut)
+                            }
+                        } else {
+                            // index == 0 means last profile in chain / not chain
+                            chainTagOut = tagOut
+                        }
                     }
-                } else {
-                    // index == 0 means last profile in chain / not chain
-                    chainTagOut = tagOut
                 }
 
                 // now tagOut is determined
@@ -372,8 +658,20 @@ fun buildConfig(
                         is JuicityBean ->
                             buildSingBoxOutboundJuicityBean(bean)
 
+                        is TrustTunnelBean ->
+                            buildSingBoxOutboundTrustTunnelBean(bean)
+
+                        is MasterDnsVPNBean ->
+                            buildSingBoxOutboundMasterDnsVPNBean(bean, proxyEntity.id)
+
+                        is ByeDPIBean ->
+                            buildSingBoxOutboundByeDPIBean(bean)
+
                         is SOCKSBean ->
                             buildSingBoxOutboundSocksBean(bean)
+
+                        is NaiveBean ->
+                            buildSingBoxOutboundNaiveBean(bean)
 
                         is ShadowsocksBean ->
                             buildSingBoxOutboundShadowsocksBean(bean)
@@ -381,8 +679,18 @@ fun buildConfig(
                         is ShadowsocksRBean ->
                             buildSingBoxOutboundShadowsocksRBean(bean)
 
-                        is WireGuardBean ->
-                            buildSingBoxOutboundWireguardBean(bean)
+                        is WireGuardBean -> {
+                            // WireGuard is now an endpoint in sing-box 1.13+
+                            val wgEndpoint = buildSingBoxEndpointWireguardBean(bean)
+                            wgEndpoint._hack_config_map["tag"] = tagOut
+                            wgEndpoint._hack_config_map["type"] = "wireguard"
+                            currentIsEndpoint = true
+                            endpoints!!.add(wgEndpoint)
+                            wgEndpoint
+                        }
+
+                        is AmneziaWGBean ->
+                            buildSingBoxOutboundAwgBean(bean)
 
                         is SSHBean ->
                             buildSingBoxOutboundSSHBean(bean)
@@ -390,11 +698,24 @@ fun buildConfig(
                         is AnyTLSBean ->
                             buildSingBoxOutboundAnyTLSBean(bean)
 
+                        is SnellBean ->
+                            buildSingBoxOutboundSnellBean(bean)
+
+                        is ProxySetBean -> {
+                            val memberTags = LinkedHashSet<String>()
+                            for (member in proxyEntity.resolveProxySetMembers()) {
+                                memberTags.add(reserveTag(member))
+                            }
+                            buildSingBoxOutboundProxySetBean(bean, memberTags.toList().filterNot { it == tagOut })
+                        }
+
                         else -> throw IllegalStateException("can't reach")
                     }
 
+                    currentOutbound.applyGroupForceUTLS(bean, proxyEntity, applyGroupForceUTLS)
+
                     // internal mux
-                    if (!muxApplied) {
+                    if (!muxApplied && bean !is ProxySetBean) {
                         val muxObj = proxyEntity.singMux()
                         if (muxObj != null && muxObj.enabled) {
                             muxApplied = true
@@ -402,12 +723,8 @@ fun buildConfig(
                         }
                     }
 
-                    if (needGlobal && DataStore.enableTLSFragment) {
-                        val outboundMap = currentOutbound.asMap()
-                        val tlsOptions = outboundMap["tls"] as? Map<*, *>
-                        if (tlsOptions?.get("enabled") == true) {
-                            currentOutbound._hack_config_map["detour"] = TAG_FRAGMENT
-                        }
+                    if (needGlobal && shouldApplyTrafficFragmentation(currentOutbound, bean)) {
+                        currentOutbound.setDetour(checkNotNull(trafficFragmentationTag))
                     }
                 }
 
@@ -429,8 +746,12 @@ fun buildConfig(
                             domainListDNSDirectForce.add("full:$serverAddress")
                         }
                     }
-                    _hack_config_map["domain_strategy"] =
-                        if (forTest) "" else defaultServerDomainStrategy
+                    if (bean !is ProxySetBean && bean !is MasterDnsVPNBean) {
+                        _hack_config_map["domain_resolver"] = buildDomainResolverConfig(
+                            if (forTest) "dns-local" else "dns-direct",
+                            if (forTest) "" else defaultServerDomainStrategy
+                        )
+                    }
 
                     _hack_config_map["tag"] = tagOut
 
@@ -469,15 +790,16 @@ fun buildConfig(
                             override_address = bean.serverAddress
                             override_port = bean.serverPort
 
-                            pastInboundTag = tag
+                                    pastInboundTag = tag
+                                    mappingInboundTags[proxyEntity.id] = tag
 
-                            // no chain rule and not outbound, so need to set to direct
+                                    // no chain rule and not outbound, so need to set to direct
                             if (index == profileList.lastIndex) {
-                                if (DataStore.enableTLSFragment) {
+                                if (shouldApplyTrafficFragmentation(currentOutbound, bean)) {
                                     route.rules.add(Rule_DefaultOptions().apply {
                                         network = listOf("tcp")
                                         inbound = listOf(tag)
-                                        outbound = TAG_FRAGMENT
+                                        outbound = checkNotNull(trafficFragmentationTag)
                                     })
                                 }
 
@@ -490,10 +812,56 @@ fun buildConfig(
                     }
                 }
 
-                outbounds.add(currentOutbound)
+                // Endpoint entries participate in chaining, but are emitted separately.
+                if (!currentIsEndpoint) {
+                    outbounds!!.add(currentOutbound)
+                }
                 chainOutbounds.add(currentOutbound)
+                outboundsByTag[tagOut] = currentOutbound
                 pastOutbound = currentOutbound
                 pastEntity = proxyEntity
+                if (!isProxySet && isChainNode) {
+                    pastChainEntity = proxyEntity
+                }
+            }
+
+            if (isProxySet) {
+                val chainNodes = profileList.filter { proxyEntity ->
+                    val bean = proxyEntity.requireBean()
+                    !proxySetMemberIds.contains(proxyEntity.id) || bean is ProxySetBean
+                }
+                if (chainNodes.isNotEmpty()) {
+                    chainTagOut = checkNotNull(reservedTags[chainNodes.first().id])
+                    for (nodeIndex in 1 until chainNodes.size) {
+                        val currentTag = checkNotNull(reservedTags[chainNodes[nodeIndex].id])
+                        connectChainNode(chainNodes[nodeIndex - 1], currentTag)
+                    }
+                    val lastChainNode = chainNodes.last()
+                    if (lastChainNode.requireBean() is ProxySetBean) {
+                        for (member in lastChainNode.resolveProxySetMembers()) {
+                            val memberTag = checkNotNull(reservedTags[member.id])
+                            val memberOutbound = outboundsByTag[memberTag] ?: continue
+                            if (shouldApplyTrafficFragmentation(memberOutbound, member.requireBean())) {
+                                memberOutbound.setDetour(checkNotNull(trafficFragmentationTag))
+                            }
+                        }
+                    } else {
+                        val lastChainNodeTag = checkNotNull(reservedTags[lastChainNode.id])
+                        val lastOutbound = outboundsByTag[lastChainNodeTag]
+                        if (lastOutbound != null && shouldApplyTrafficFragmentation(lastOutbound, lastChainNode.requireBean())) {
+                            connectChainNode(lastChainNode, checkNotNull(trafficFragmentationTag))
+                        }
+                    }
+
+                    val proxySetTag = checkNotNull(reservedTags[entity.id])
+                    val chunkStart = (outbounds!!.size - profileList.size).coerceAtLeast(0)
+                    val proxySetIndex = outbounds!!.indexOfLast {
+                        it._hack_config_map["tag"] == proxySetTag
+                    }
+                    if (proxySetIndex in chunkStart..outbounds!!.lastIndex) {
+                        outbounds!!.add(chunkStart, outbounds!!.removeAt(proxySetIndex))
+                    }
+                }
             }
 
             trafficMap[chainTagOut] = chainTrafficSet.toList()
@@ -503,8 +871,11 @@ fun buildConfig(
         // build outbounds
         if (buildSelector) {
             val list = group.id.let { SagerDatabase.proxyDao.getByGroup(it) }
+            if (list.any { it.containsByeDPI() }) {
+                error("ByeDPI is not allowed in selector groups")
+            }
             list.forEach {
-                tagMap[it.id] = buildChain(it.id, it)
+                tagMap[it.id] = buildChain(it.id, it, true, true)
             }
             outbounds.add(0, Outbound_SelectorOptions().apply {
                 type = "selector"
@@ -513,18 +884,24 @@ fun buildConfig(
                 outbounds = tagMap.values.toList()
             })
         } else {
-            val mainTag = buildChain(0, proxy)
+            val mainTag = buildChain(0, proxy, true, true)
             tagMap[proxy.id] = mainTag
         }
         // build outbounds from route item
         extraProxies.forEach { (key, p) ->
-            tagMap[key] = buildChain(key, p)
+            val includeGroupProxyChain = p.id in selectedGroupProfileIds && !p.containsByeDPI()
+            tagMap[key] = buildChain(key, p, false, includeGroupProxyChain)
         }
 
         val mainProxyTag = (if (buildSelector) TAG_PROXY else tagMap[proxy.id]) ?: TAG_PROXY
+        val mainProxyIsEndpoint = endpoints?.any {
+            it._hack_config_map["tag"] == mainProxyTag
+        } == true
 
         // 在应用用户规则之前检查全局模式
-        if (!forTest && DataStore.globalMode) {
+        if (forTest) {
+            route.final_ = mainProxyTag
+        } else if (DataStore.globalMode) {
             // 全局模式下的规则处理
             
             // 绕过内部网络（如果启用）
@@ -546,7 +923,7 @@ fun buildConfig(
             }
 
             route.rules.add(Rule_DefaultOptions().apply {
-                inbound = listOf("tun-in")
+                inbound = listOf(TAG_TUN)
                 outbound = mainProxyTag
             })
 
@@ -557,6 +934,14 @@ fun buildConfig(
 
             route.final_ = mainProxyTag
         } else {
+            if (mainProxyIsEndpoint) {
+                // Preserve the historical "selected profile is the implicit default" behavior
+                // when the selected main hop is emitted as an endpoint instead of an outbound.
+                route.final_ = mainProxyTag
+            }
+
+            val nonBypassPackages = mutableListOf<String>()
+
             // 应用用户规则
             for (rule in extraRules) {
                 if (rule.packages.isNotEmpty()) {
@@ -564,11 +949,10 @@ fun buildConfig(
                 }
                 val uidList = rule.packages.map {
                     if (!isVPN) {
-                        Toast.makeText(
-                            SagerNet.application,
+                        showConfigToast(
                             SagerNet.application.getString(R.string.route_need_vpn, rule.displayName()),
                             Toast.LENGTH_SHORT
-                        ).show()
+                        )
                     }
                     PackageCache[it]?.takeIf { uid -> uid >= 1000 }
                 }.toHashSet().filterNotNull()
@@ -599,7 +983,7 @@ fun buildConfig(
                         rulesetUrls.forEach { origUrl ->
                             val (url, isIPRuleset) = processRulesetUrl(origUrl)
                             
-                            val tag = generateRemoteRuleSet(url, ruleSets, DataStore.rulesUpdateInterval)
+                            val tag = generateRemoteRuleSet(url, ruleSets, DataStore.rulesUpdateInterval, mainProxyTag)
                             
                             rulesetTags.add(Pair(tag, isIPRuleset))
                             
@@ -631,6 +1015,19 @@ fun buildConfig(
                             }
                         }
                     }
+                    if (rule.networkType.isNotEmpty()) {
+                        network_type = rule.networkType.toList()
+                    }
+                    if (RuleEntity.isWifiIdentityVisible(rule.networkType)) {
+                        val wifiSsidList = RuleEntity.normalizeWifiSsidList(rule.wifiSsid)
+                        if (wifiSsidList.isNotEmpty()) {
+                            wifi_ssid = wifiSsidList
+                        }
+                        val wifiBssidList = RuleEntity.normalizeWifiBssidList(rule.wifiBssid)
+                        if (wifiBssidList.isNotEmpty()) {
+                            wifi_bssid = wifiBssidList
+                        }
+                    }
                     if (rule.network.isNotBlank()) {
                         network = listOf(rule.network)
                     }
@@ -641,84 +1038,15 @@ fun buildConfig(
                         protocol = rule.protocol.listByLineOrComma()
                     }
 
-                    fun makeDnsRuleObj(): DNSRule_DefaultOptions {
-                        return DNSRule_DefaultOptions().apply {
-                            if (uidList.isNotEmpty()) user_id = uidList
-                            domainList?.let { makeSingBoxRule(it) }
-                        }
-                    }
-
-		    when (rule.outbound) {
-                        -1L -> {
-                            userDNSRuleList += makeDnsRuleObj().apply { server = "dns-direct" }
-                            
-                            if (rule_set != null && rulesetTags.isNotEmpty()) {
-                                for (tag in rule_set) {
-                                    // 只处理ruleset标签，且必须是非IP类型
-                                    val tagInfo = rulesetTags.find { it.first == tag }
-                                    if (tag.startsWith("ruleset-") && tagInfo != null && !tagInfo.second) {
-                                        userDNSRuleList += DNSRule_DefaultOptions().apply {
-                                            rule_set = mutableListOf(tag)
-                                            server = "dns-direct"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        0L -> {
-                            if (useFakeDns) userDNSRuleList += makeDnsRuleObj().apply {
-                                server = "dns-fake"
-                                inbound = listOf("tun-in")
-                                query_type = listOf("A", "AAAA")
-                            } else {
-                                userDNSRuleList += makeDnsRuleObj().apply {
-                                    server = "dns-remote"
-                                }
-                            }
-                            
-                            if (rule_set != null && rulesetTags.isNotEmpty()) {
-                                for (tag in rule_set) {
-                                    val tagInfo = rulesetTags.find { it.first == tag }
-                                    if (tag.startsWith("ruleset-") && tagInfo != null && !tagInfo.second) {
-                                        if (useFakeDns) {
-                                            userDNSRuleList += DNSRule_DefaultOptions().apply {
-                                                rule_set = mutableListOf(tag)
-                                                server = "dns-fake"
-                                                inbound = listOf("tun-in")
-                                                query_type = listOf("A", "AAAA")
-                                            }
-                                        } else {
-                                            userDNSRuleList += DNSRule_DefaultOptions().apply {
-                                                rule_set = mutableListOf(tag)
-                                                server = "dns-remote"
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        -2L -> {
-                            userDNSRuleList += makeDnsRuleObj().apply {
-                                server = "dns-block"
-                                disable_cache = true
-                            }
-                            
-                            if (rule_set != null && rulesetTags.isNotEmpty()) {
-                                for (tag in rule_set) {
-                                    val tagInfo = rulesetTags.find { it.first == tag }
-                                    if (tag.startsWith("ruleset-") && tagInfo != null && !tagInfo.second) {
-                                        userDNSRuleList += DNSRule_DefaultOptions().apply {
-                                            rule_set = mutableListOf(tag)
-                                            server = "dns-block"
-                                            disable_cache = true
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    userDNSRuleList += buildRouteDnsRules(
+                        createDnsRule = rule.createDnsRule,
+                        outbound = rule.outbound,
+                        uidList = uidList,
+                        domainList = domainList,
+                        ruleSet = rule_set,
+                        rulesetTags = rulesetTags,
+                        useFakeDns = useFakeDns,
+                    )
 
                     outbound = when (val outId = rule.outbound) {
                         0L -> mainProxyTag
@@ -732,11 +1060,10 @@ fun buildConfig(
 
                 if (!ruleObj.checkEmpty()) {
                     if (ruleObj.outbound.isNullOrBlank()) {
-                        Toast.makeText(
-                            SagerNet.application,
+                        showConfigToast(
                             "Warning: " + rule.displayName() + ": A non-existent outbound was specified.",
                             Toast.LENGTH_LONG
-                        ).show()
+                        )
                     } else {
                         // block 改用新的写法
                         if (ruleObj.outbound == TAG_BLOCK) {
@@ -747,29 +1074,274 @@ fun buildConfig(
                         route.rule_set.addAll(ruleSets)
                     }
                 }
+
+                // List of all per-rule packages where outbound is not Bypass.
+                // This excludes those packages from TUN filter rules and enables user-defined rules for them.
+                if (rule.packages.isNotEmpty() && rule.outbound != -1L) {
+                    nonBypassPackages.addAll(rule.packages)
+                }
+            }
+
+            // System per-app enforcement rules: prevent force-bound apps from
+            // leaking through the wrong outbound. Only apply them to the TUN
+            // inbound so the optional local mixed/SOCKS listener stays usable.
+            if (isVPN && DataStore.proxyApps) {
+                val bypassMode = DataStore.bypass
+                val individualPackages = (DataStore.individual
+                    .split('\n')
+                    .filter { it.isNotBlank() } + if (bypassMode) mutableListOf<String>() else nonBypassPackages)
+                    .toSet()
+
+                val dnsLeakList = DataStore.tunDnsWhitelist
+                    .split('\n', ',')
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .filter { isPureIpAddress(it) }
+                    .map { if (isIpv4Address(it)) "$it/32" else "$it/128" }
+                val dotLeakList = DataStore.tunDotWhitelist
+                    .split('\n', ',')
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                val dohLeakList = DataStore.tunDohWhitelist
+                    .split('\n', ',')
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+
+                val dotLeakIps = dotLeakList
+                    .filter { isPureIpAddress(it) }
+                    .map { if (isIpv4Address(it)) "$it/32" else "$it/128" }
+                val dohLeakIps = dohLeakList
+                    .filter { isPureIpAddress(it) }
+                    .map { if (isIpv4Address(it)) "$it/32" else "$it/128" }
+                val dotLeakDomains = dotLeakList
+                    .filter { !isPureIpAddress(it) }
+                    .map { it.lowercase() }
+                val dohLeakDomains = dohLeakList
+                    .filter { !isPureIpAddress(it) }
+                    .map { it.lowercase() }
+
+                val tunDnsMode = when (DataStore.tunSystemDnsTraffic) {
+                    "proxy" -> mainProxyTag
+                    "direct" -> TAG_BYPASS
+                    else -> if (bypassMode) TAG_BYPASS else mainProxyTag
+                }
+
+                // Explicitly route direct DNS to direct.
+                val directDnsRule = DataStore.directDns
+                    .lineSequence().firstNotNullOfOrNull { parseDnsEndpoint(it) }
+                    ?.let { endpoint ->
+                        val isIp = isPureIpAddress(endpoint.host)
+                        val isIpv4 = isIp && isIpv4Address(endpoint.host)
+
+                        val portValues: List<Int> = endpoint.port?.let { listOf(it) } ?: when (endpoint.scheme) {
+                            "https" -> listOf(443)
+                            "tls", "quic" -> listOf(853, 443)
+                            else -> listOf(53)
+                        }
+
+                        Rule_DefaultOptions().apply {
+                            inbound = listOf(TAG_TUN)
+
+                            if (isIp) {
+                                ip_cidr = listOf(
+                                    if (isIpv4) "${endpoint.host}/32"
+                                    else "${endpoint.host}/128"
+                                )
+                            } else {
+                                domain = listOf(endpoint.host.lowercase())
+                            }
+
+                            network = when (endpoint.scheme) {
+                                "https", "tls", "tcp" -> listOf("tcp")
+                                "quic" -> listOf("udp")
+                                else -> listOf("tcp", "udp")
+                            }
+
+                            port = portValues
+
+                            protocol = when (endpoint.scheme) {
+                                "tls" -> listOf("tls")
+                                "quic" -> listOf("quic")
+                                else -> null
+                            }
+
+                            outbound = TAG_BYPASS
+                        }
+                    }
+
+                // DNS hangup prevention: route well-known resolvers via
+                // proxy regardless of which app sends the query.
+                val dnsLeakRule = if (dnsLeakList.count() > 0) Rule_DefaultOptions().apply {
+                    inbound = listOf(TAG_TUN)
+                    ip_cidr = dnsLeakList.toMutableList()
+                    network = listOf("udp")
+                    port = listOf(53)
+                    outbound = tunDnsMode
+                } else null
+
+                val dotLeakRule = if (dotLeakIps.count() > 0 || dotLeakDomains.count() > 0) Rule_DefaultOptions().apply {
+                    inbound = listOf(TAG_TUN)
+                    domain = dotLeakDomains.toMutableList()
+                    ip_cidr = dotLeakIps.toMutableList()
+                    network = listOf("tcp", "udp")
+                    protocol = listOf("tls", "quic")
+                    port = listOf(853)
+                    outbound = tunDnsMode
+                } else null
+
+                val dohLeakRule = if (dohLeakIps.count() > 0 || dohLeakDomains.count() > 0) Rule_DefaultOptions().apply {
+                    inbound = listOf(TAG_TUN)
+                    domain = dohLeakDomains.toMutableList()
+                    ip_cidr = dohLeakIps.toMutableList()
+                    network = listOf("tcp", "udp")
+                    protocol = listOf("tls", "quic")
+                    port = listOf(443)
+                    outbound = tunDnsMode
+                } else null
+
+                val catchMyself = Rule_DefaultOptions().apply {
+                    inbound = listOf(TAG_TUN)
+                    package_name = listOf<String>(BuildConfig.APPLICATION_ID)
+                    outbound = mainProxyTag
+                }
+
+                val tunMode = DataStore.tunUnrecognizedTraffic
+                val catchUnmatched = if (tunMode != "insecure") {
+                    Rule_DefaultOptions().apply {
+                        inbound = listOf(TAG_TUN)
+                        package_name = mutableListOf("android")
+                        outbound = when (tunMode) {
+                            "block" -> TAG_BLOCK
+                            "normal-direct-bypass-block" -> if (bypassMode) TAG_BLOCK else TAG_DIRECT
+                            "direct" -> TAG_DIRECT
+                            "proxy" -> mainProxyTag
+                            else -> TAG_BLOCK
+                        }
+                    }
+                } else null
+
+                var packageRule = if (individualPackages.isNotEmpty()) {
+                    Rule_DefaultOptions().apply {
+                        inbound = listOf(TAG_TUN)
+                        package_name = when (bypassMode) {
+                            true -> individualPackages.toMutableList()
+                            false -> null
+                        }
+                        package_name_exclude = when (bypassMode) {
+                            false -> individualPackages.toMutableList()
+                            true -> null
+                        }
+                        outbound = TAG_BYPASS
+                    }
+                } else null
+
+                val catchAllRule = if (bypassMode) {
+                    Rule_DefaultOptions().apply {
+                        inbound = listOf(TAG_TUN)
+                        package_name_exclude = mutableListOf("none")
+                        outbound = mainProxyTag
+                    }
+                } else null
+
+                var index = 0
+
+                route.rules.add(index, catchMyself)
+                index++
+
+                directDnsRule?.let {
+                    route.rules.add(index, it)
+                    index++
+                }
+
+                dnsLeakRule?.let {
+                    route.rules.add(index, it)
+                    index++
+                }
+
+                dotLeakRule?.let {
+                    route.rules.add(index, it)
+                    index++
+                }
+
+                dohLeakRule?.let {
+                    route.rules.add(index, it)
+                    index++
+                }
+
+                catchUnmatched?.let {
+                    route.rules.add(index, it)
+                    index++
+                }
+
+                packageRule?.let { route.rules.add(index, it) }
+                catchAllRule?.let { route.rules.add(catchAllRule) }
             }
         }
 
-        // 对 rule_set tag 去重
+        // 对 rule_set tag 去重，后出现的定义覆盖前面的同名 tag
         if (route.rule_set != null) {
-            route.rule_set = route.rule_set.distinctBy { it.tag }
+            route.rule_set = route.rule_set
+                .asReversed()
+                .distinctBy { it.tag }
+                .asReversed()
         }
 
-        for (freedom in arrayOf(TAG_DIRECT, TAG_BYPASS)) outbounds.add(Outbound().apply {
-            tag = freedom
-            type = "direct"
-        })
-
-        if (DataStore.enableTLSFragment) {
-            val fragmentOutbound = Outbound().apply {
-                tag = TAG_FRAGMENT
-                type = "direct"
-                _hack_config_map["fragment"] = Fragment().apply {
-                    length = DataStore.fragmentLength
-                    interval = DataStore.fragmentInterval
-                }.asMap()
+        fun buildExclaveFragmentOutbound(tagValue: String): Outbound {
+            return Outbound().apply {
+                tag = tagValue
+                type = "fragment-exclave"
+                when (DataStore.exclaveFragmentMethod) {
+                    ExclaveFragmentationMethod.TCP_SEGMENTATION -> {
+                        _hack_config_map["tcp_segmentation"] = true
+                    }
+                    ExclaveFragmentationMethod.TLS_RECORD_FRAGMENTATION_AND_TCP_SEGMENTATION -> {
+                        _hack_config_map["tls_record_fragmentation"] = true
+                        _hack_config_map["tcp_segmentation"] = true
+                    }
+                    else -> {
+                        _hack_config_map["tls_record_fragmentation"] = true
+                    }
+                }
             }
-            outbounds.add(fragmentOutbound)
+        }
+
+        for (freedom in arrayOf(TAG_DIRECT, TAG_BYPASS)) outbounds.add(
+            if (trafficFragmentation == TrafficFragmentation.EXCLAVE &&
+                DataStore.exclaveFragmentForDirect &&
+                freedom == TAG_DIRECT
+            ) {
+                buildExclaveFragmentOutbound(freedom)
+            } else {
+                Outbound().apply {
+                    tag = freedom
+                    type = "direct"
+                }
+            }
+        )
+
+        when (trafficFragmentation) {
+            TrafficFragmentation.STARIFLY -> {
+                val fragmentOutbound = Outbound().apply {
+                    tag = TAG_FRAGMENT
+                    type = "direct"
+                    _hack_config_map["fragment"] = Fragment().apply {
+                        length = DataStore.fragmentLength
+                        interval = DataStore.fragmentInterval
+                    }.asMap()
+                }
+                outbounds.add(fragmentOutbound)
+            }
+            TrafficFragmentation.EXCLAVE -> {
+                outbounds.add(buildExclaveFragmentOutbound(TAG_FRAGMENT_EXCLAVE))
+            }
+            TrafficFragmentation.BYEDPI -> {
+                outbounds.add(Outbound_ByeDPIOptions().apply {
+                    tag = TAG_BYEDPI_FRAGMENT
+                    type = "byedpi"
+                    cli = DataStore.byedpiFragmentCli
+                })
+            }
+            else -> Unit
         }
 
         // Bypass Lookup for the first profile
@@ -832,7 +1404,7 @@ fun buildConfig(
             })
         }
 
-        dns.final_ = if (forTest) "dns-direct" else "dns-remote"
+        dns.final_ = if (forTest) "dns-local" else "dns-remote"
 
         // dns object user rules
         if (enableDnsRouting) {
@@ -842,6 +1414,11 @@ fun buildConfig(
         }
 
         if (forTest) {
+            dns.servers = listOf(DNSServerOptions().apply {
+                address = "local"
+                tag = "dns-local"
+                detour = TAG_DIRECT
+            })
             dns.rules = listOf()
         } else {
             // built-in DNS rules
@@ -853,6 +1430,27 @@ fun buildConfig(
                 port = listOf(53)
                 action = "hijack-dns"
             })
+            // Migrate legacy inbound sniff/domain_strategy to route rule actions (sing-box 1.13)
+            val routeActionInbounds = buildList {
+                if (isVPN) add(TAG_TUN)
+                if (!isVPN || DataStore.requireProxyInVPN) add(TAG_MIXED)
+            }
+            val domainStrategyStr = genDomainStrategy(DataStore.resolveDestination)
+            routeActionInbounds.asReversed().forEach { inboundTag ->
+                if (domainStrategyStr.isNotEmpty()) {
+                    route.rules.add(0, Rule_DefaultOptions().apply {
+                        inbound = listOf(inboundTag)
+                        action = "resolve"
+                        strategy = domainStrategyStr
+                    })
+                }
+                if (needSniff) {
+                    route.rules.add(0, Rule_DefaultOptions().apply {
+                        inbound = listOf(inboundTag)
+                        action = "sniff"
+                    })
+                }
+            }
             if (DataStore.bypassLanInCore) {
                 route.rules.add(Rule_DefaultOptions().apply {
                     outbound = TAG_BYPASS
@@ -878,7 +1476,7 @@ fun buildConfig(
                     strategy = "ipv4_only"
                 })
                 dns.rules.add(DNSRule_DefaultOptions().apply {
-                    inbound = listOf("tun-in")
+                    inbound = listOf(TAG_TUN)
                     server = "dns-fake"
                     disable_cache = true
                     query_type = listOf("A", "AAAA")
@@ -902,8 +1500,20 @@ fun buildConfig(
     }.let {
         val configMap = it.asMap()
         Util.mergeJSON(configMap, proxy.requireBean().customConfigJson)
+
+        if (!forTest && isVPN && (!DataStore.appendHttpProxy && !DataStore.requireProxyInVPN)) {
+            @Suppress("UNCHECKED_CAST")
+            val inboundsList = configMap["inbounds"] as? MutableList<MutableMap<String, Any?>>
+            inboundsList?.removeAll { inbound ->
+                val type = inbound["type"] as? String
+                type != null && type != "tun" && type != "direct"
+            }
+        }
+
         ConfigBuildResult(
-            gson.toJson(configMap),
+            gson.toJson(configMap).let {
+                if (forTest) it.withUrlTestCacheFile(urlTestCacheKey) else it
+            },
             externalIndexMap,
             proxy.id,
             trafficMap,
@@ -911,5 +1521,26 @@ fun buildConfig(
             if (buildSelector) group.id else -1L
         )
     }
+}
 
+private fun String.withUrlTestCacheFile(cacheKey: String): String {
+    return runCatching {
+        val config = gson.fromJson(this, JsonObject::class.java) ?: return this
+        val existingExperimental = config.get("experimental")
+        val experimental = if (existingExperimental is JsonObject) {
+            existingExperimental
+        } else {
+            JsonObject().also { config.add("experimental", it) }
+        }
+        experimental.add("cache_file", JsonObject().apply {
+            addProperty("enabled", false)
+            addProperty(
+                "path",
+                "../cache/urltest_${cacheKey}_${SystemClock.elapsedRealtimeNanos()}.db"
+            )
+        })
+        gson.toJson(config)
+    }.getOrElse {
+        this
+    }
 }

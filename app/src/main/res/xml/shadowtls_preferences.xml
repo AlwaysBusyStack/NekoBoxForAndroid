@@ -48,7 +48,7 @@
             app:key="certificates"
             app:title="@string/certificates"
             app:useSimpleSummaryProvider="true" />
-        <SwitchPreference
+        <moe.matsuri.nb4a.ui.MaterialSwitchPreference
             app:icon="@drawable/ic_notification_enhanced_encryption"
             app:key="allowInsecure"
             app:summary="@string/allow_insecure_sum"
@@ -56,7 +56,7 @@
         <moe.matsuri.nb4a.ui.SimpleMenuPreference
             app:defaultValue=""
             app:entries="@array/utls_fingerprint_entry"
-            app:entryValues="@array/utls_fingerprint_entry"
+            app:entryValues="@array/utls_fingerprint_value"
             app:icon="@drawable/ic_baseline_fingerprint_24"
             app:key="utlsFingerprint"
             app:title="@string/utls_fingerprint"

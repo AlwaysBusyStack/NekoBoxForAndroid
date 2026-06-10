@@ -8,6 +8,7 @@ import androidx.work.ExistingPeriodicWorkPolicy.UPDATE
 import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkerParameters
 import androidx.work.multiprocess.RemoteWorkManager
+import io.nekohasekai.sagernet.BootReceiver
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.SagerDatabase
@@ -21,30 +22,54 @@ object SubscriptionUpdater {
     private const val WORK_NAME = "SubscriptionUpdater"
 
     suspend fun reconfigureUpdater() {
-        RemoteWorkManager.getInstance(app).cancelUniqueWork(WORK_NAME)
-
         val subscriptions = SagerDatabase.groupDao.subscriptions()
             .filter { it.subscription!!.autoUpdate }
-        if (subscriptions.isEmpty()) return
+        syncBootReceiverEnabled(subscriptions.isNotEmpty())
+        if (subscriptions.isEmpty()) {
+            RemoteWorkManager.getInstance(app).cancelUniqueWork(WORK_NAME)
+            return
+        }
 
-        // PeriodicWorkRequest.MIN_PERIODIC_INTERVAL_MILLIS
-        var minDelay =
-            subscriptions.minByOrNull { it.subscription!!.autoUpdateDelay }!!.subscription!!.autoUpdateDelay.toLong()
-        val now = System.currentTimeMillis() / 1000L
-        var minInitDelay =
-            subscriptions.minOf { now - it.subscription!!.lastUpdated - (minDelay * 60) }
-        if (minDelay < 15) minDelay = 15
-        if (minInitDelay > 60) minInitDelay = 60
+        val schedule = SubscriptionUpdateSchedulePolicy.schedule(
+            subscriptions = subscriptions.map {
+                val subscription = it.subscription!!
+                SubscriptionUpdateSchedulePolicy.SubscriptionState(
+                    autoUpdateDelayMinutes = subscription.autoUpdateDelay,
+                    lastUpdatedSeconds = subscription.lastUpdated,
+                )
+            },
+            nowSeconds = System.currentTimeMillis() / 1000L,
+        ) ?: return
 
         // main process
         RemoteWorkManager.getInstance(app).enqueueUniquePeriodicWork(
             WORK_NAME,
             UPDATE,
-            PeriodicWorkRequest.Builder(UpdateTask::class.java, minDelay, TimeUnit.MINUTES)
+            PeriodicWorkRequest.Builder(UpdateTask::class.java, schedule.intervalMinutes, TimeUnit.MINUTES)
                 .apply {
-                    if (minInitDelay > 0) setInitialDelay(minInitDelay, TimeUnit.SECONDS)
+                    if (schedule.initialDelaySeconds > 0) {
+                        setInitialDelay(schedule.initialDelaySeconds, TimeUnit.SECONDS)
+                    }
                 }
                 .build()
+        )
+        Logs.d(
+            "reconfigureUpdater, interval: ${schedule.intervalMinutes} min" +
+                    if (schedule.initialDelaySeconds > 0) ", initial delay: ${schedule.initialDelaySeconds} s" else ""
+        )
+    }
+
+    suspend fun syncBootReceiverEnabled() {
+        syncBootReceiverEnabled(
+            SagerDatabase.groupDao.subscriptions()
+                .any { it.subscription!!.autoUpdate }
+        )
+    }
+
+    private fun syncBootReceiverEnabled(hasAutoUpdateSubscriptions: Boolean) {
+        BootReceiver.enabled = SubscriptionBootReceiverPolicy.shouldEnableReceiver(
+            persistAcrossReboot = DataStore.persistAcrossReboot,
+            hasAutoUpdateSubscriptions = hasAutoUpdateSubscriptions,
         )
     }
 

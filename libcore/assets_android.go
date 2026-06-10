@@ -7,11 +7,13 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"strconv"
+	"strings"
 
-	"golang.org/x/mobile/asset"
+	"github.com/sagernet/gomobile/asset"
 )
+
+const customAssetVersionPrefix = "custom:"
 
 func extractAssets() {
 	useOfficialAssets := intfNB4A.UseOfficialAssets()
@@ -25,7 +27,19 @@ func extractAssets() {
 
 	extract(geoipDat)
 	extract(geositeDat)
-	extract(yacdDstFolder)
+	extract(throneRulesetDat)
+	extract(itdogRulesetDat)
+	extract(metacubexdDstFolder)
+}
+
+func resetPanelAssets() error {
+	if err := os.RemoveAll(internalAssetsPath + metacubexdDstFolder); err != nil {
+		return err
+	}
+	if err := os.Remove(internalAssetsPath + metacubexdVersion); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return extractAssetName(metacubexdDstFolder, false)
 }
 
 // 这里解压的是 apk 里面的
@@ -43,8 +57,14 @@ func extractAssetName(name string, useOfficialAssets bool) error {
 	case geositeDat:
 		version = geositeVersion
 		apkPrefix = apkAssetPrefixSingBox
-	case yacdDstFolder:
-		version = yacdVersion
+	case throneRulesetDat:
+		version = throneRulesetVersion
+		apkPrefix = apkAssetPrefixSingBox
+	case itdogRulesetDat:
+		version = itdogRulesetVersion
+		apkPrefix = apkAssetPrefixSingBox
+	case metacubexdDstFolder:
+		version = metacubexdVersion
 		replaceable = false
 	}
 
@@ -91,7 +111,7 @@ func extractAssetName(name string, useOfficialAssets bool) error {
 			_ = os.RemoveAll(version)
 		} else {
 			localVersion = string(b)
-			if localVersion == "Custom" {
+			if strings.HasPrefix(localVersion, customAssetVersionPrefix) {
 				doExtract = false
 			} else {
 				av, err := strconv.ParseUint(assetVersion, 10, 64)
@@ -124,37 +144,37 @@ func extractAssetName(name string, useOfficialAssets bool) error {
 		return nil
 	}
 
-	extracZip := func(f asset.File, outDir string) error {
-		tmpZipName := dstName + ".zip"
-		err := extractAsset(f, tmpZipName)
+	extractTarGz := func(f asset.File, outDir string) error {
+		tmpTarGzName := dstName + ".tgz"
+		err := extractAsset(f, tmpTarGzName)
 		if err == nil {
-			err = Unzip(tmpZipName, outDir)
-			os.Remove(tmpZipName)
+			err = UntarGz(tmpTarGzName, outDir)
+			os.Remove(tmpTarGzName)
 		}
 		if err != nil {
-			return fmt.Errorf("extract zip: %v", err)
+			return fmt.Errorf("extract tgz: %v", err)
 		}
 		return nil
 	}
 
 	if f, err := asset.Open(apkPrefix + name + ".xz"); err == nil {
 		extractXz(f)
-	} else if f, err := asset.Open("yacd.zip"); err == nil {
+	} else if f, err := asset.Open(apkPrefix + name); err == nil {
+		err = extractAsset(f, dstName)
+		if err != nil {
+			return fmt.Errorf("extract asset: %v", err)
+		}
+	} else if f, err := asset.Open("metacubexd.tgz"); err == nil {
 		os.RemoveAll(dstName)
-		extracZip(f, internalAssetsPath)
-		m, err := filepath.Glob(internalAssetsPath + "/Yacd-*")
-		if err != nil {
-			return fmt.Errorf("glob Yacd: %v", err)
+		if err := os.MkdirAll(dstName, 0o755); err != nil {
+			return fmt.Errorf("mkdir metacubexd dir: %v", err)
 		}
-		if len(m) != 1 {
-			return fmt.Errorf("glob Yacd found %d result, expect 1", len(m))
+		if err := extractTarGz(f, dstName); err != nil {
+			return err
 		}
-		err = os.Rename(m[0], dstName)
-		if err != nil {
-			return fmt.Errorf("rename Yacd: %v", err)
-		}
-
-	} // TODO normal file
+	} else {
+		return fmt.Errorf("asset not found: %s", apkPrefix+name)
+	}
 
 	o, err := os.Create(dir + version)
 	if err != nil {

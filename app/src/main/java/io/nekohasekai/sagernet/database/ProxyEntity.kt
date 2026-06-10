@@ -11,6 +11,8 @@ import io.nekohasekai.sagernet.fmt.http.HttpBean
 import io.nekohasekai.sagernet.fmt.http.toUri
 import io.nekohasekai.sagernet.fmt.hysteria.*
 import io.nekohasekai.sagernet.fmt.internal.ChainBean
+import io.nekohasekai.sagernet.fmt.internal.ProxySetBean
+import io.nekohasekai.sagernet.fmt.masterdns.MasterDnsVPNBean
 import io.nekohasekai.sagernet.fmt.mieru.MieruBean
 import io.nekohasekai.sagernet.fmt.mieru.buildMieruConfig
 import io.nekohasekai.sagernet.fmt.naive.NaiveBean
@@ -19,6 +21,8 @@ import io.nekohasekai.sagernet.fmt.naive.toUri
 import io.nekohasekai.sagernet.fmt.shadowsocks.*
 import io.nekohasekai.sagernet.fmt.shadowsocksr.ShadowsocksRBean
 import io.nekohasekai.sagernet.fmt.shadowsocksr.toUri
+import io.nekohasekai.sagernet.fmt.snell.SnellBean
+import io.nekohasekai.sagernet.fmt.snell.toUri
 import moe.matsuri.nb4a.proxy.shadowtls.ShadowTLSBean
 import io.nekohasekai.sagernet.fmt.socks.SOCKSBean
 import io.nekohasekai.sagernet.fmt.socks.toUri
@@ -27,12 +31,17 @@ import io.nekohasekai.sagernet.fmt.trojan.TrojanBean
 import io.nekohasekai.sagernet.fmt.trojan_go.TrojanGoBean
 import io.nekohasekai.sagernet.fmt.trojan_go.buildTrojanGoConfig
 import io.nekohasekai.sagernet.fmt.trojan_go.toUri
+import io.nekohasekai.sagernet.fmt.trusttunnel.TrustTunnelBean
+import io.nekohasekai.sagernet.fmt.trusttunnel.toUri
 import io.nekohasekai.sagernet.fmt.tuic.TuicBean
 import io.nekohasekai.sagernet.fmt.tuic.toUri
 import io.nekohasekai.sagernet.fmt.juicity.JuicityBean
 import io.nekohasekai.sagernet.fmt.juicity.toUri
 import io.nekohasekai.sagernet.fmt.v2ray.*
+import io.nekohasekai.sagernet.fmt.wireguard.AmneziaWGBean
 import io.nekohasekai.sagernet.fmt.wireguard.WireGuardBean
+import io.nekohasekai.sagernet.fmt.wireguard.buildAmneziaWGConfig
+import io.nekohasekai.sagernet.fmt.wireguard.buildWireGuardConfig
 import io.nekohasekai.sagernet.ktx.app
 import io.nekohasekai.sagernet.ui.profile.*
 import moe.matsuri.nb4a.SingBoxOptions.BrutalOptions
@@ -40,6 +49,8 @@ import moe.matsuri.nb4a.SingBoxOptions.MultiplexOptions
 import moe.matsuri.nb4a.proxy.anytls.AnyTLSBean
 import moe.matsuri.nb4a.proxy.anytls.AnyTLSSettingsActivity
 import moe.matsuri.nb4a.proxy.anytls.toUri
+import moe.matsuri.nb4a.proxy.byedpi.ByeDPIBean
+import moe.matsuri.nb4a.proxy.byedpi.ByeDPISettingsActivity
 import moe.matsuri.nb4a.proxy.config.ConfigBean
 import moe.matsuri.nb4a.proxy.config.ConfigSettingActivity
 import moe.matsuri.nb4a.proxy.neko.*
@@ -71,10 +82,16 @@ data class ProxyEntity(
     var hysteriaBean: HysteriaBean? = null,
     var tuicBean: TuicBean? = null,
     var juicityBean: JuicityBean? = null,
+    var snellBean: SnellBean? = null,
+    var masterDnsVPNBean: MasterDnsVPNBean? = null,
+    var byeDPIBean: ByeDPIBean? = null,
     var sshBean: SSHBean? = null,
     var wgBean: WireGuardBean? = null,
+    var awgBean: AmneziaWGBean? = null,
     var shadowTLSBean: ShadowTLSBean? = null,
     var anyTLSBean: AnyTLSBean? = null,
+    var trustTunnelBean: TrustTunnelBean? = null,
+    var proxySetBean: ProxySetBean? = null,
     var chainBean: ChainBean? = null,
     var nekoBean: NekoBean? = null,
     var configBean: ConfigBean? = null,
@@ -99,6 +116,12 @@ data class ProxyEntity(
         const val TYPE_MIERU = 21
         const val TYPE_ANYTLS = 22
         const val TYPE_JUICITY = 23
+        const val TYPE_AWG = 24
+        const val TYPE_SNELL = 25
+        const val TYPE_PROXY_SET = 26
+        const val TYPE_MASTERDNSVPN = 27
+        const val TYPE_BYEDPI = 28
+        const val TYPE_TRUST_TUNNEL = 29
 
         const val TYPE_CONFIG = 998
         const val TYPE_NEKO = 999
@@ -181,10 +204,16 @@ data class ProxyEntity(
             TYPE_HYSTERIA -> hysteriaBean = KryoConverters.hysteriaDeserialize(byteArray)
             TYPE_SSH -> sshBean = KryoConverters.sshDeserialize(byteArray)
             TYPE_WG -> wgBean = KryoConverters.wireguardDeserialize(byteArray)
+            TYPE_AWG -> awgBean = KryoConverters.amneziaWGDeserialize(byteArray)
             TYPE_TUIC -> tuicBean = KryoConverters.tuicDeserialize(byteArray)
             TYPE_JUICITY -> juicityBean = KryoConverters.juicityDeserialize(byteArray)
+            TYPE_SNELL -> snellBean = KryoConverters.snellDeserialize(byteArray)
+            TYPE_MASTERDNSVPN -> masterDnsVPNBean = KryoConverters.masterDnsVPNDeserialize(byteArray)
+            TYPE_BYEDPI -> byeDPIBean = KryoConverters.byeDPIDeserialize(byteArray)
             TYPE_SHADOWTLS -> shadowTLSBean = KryoConverters.shadowTLSDeserialize(byteArray)
             TYPE_ANYTLS -> anyTLSBean = KryoConverters.anyTLSDeserialize(byteArray)
+            TYPE_TRUST_TUNNEL -> trustTunnelBean = KryoConverters.trustTunnelDeserialize(byteArray)
+            TYPE_PROXY_SET -> proxySetBean = KryoConverters.proxySetDeserialize(byteArray)
             TYPE_CHAIN -> chainBean = KryoConverters.chainDeserialize(byteArray)
             TYPE_NEKO -> nekoBean = KryoConverters.nekoDeserialize(byteArray)
             TYPE_CONFIG -> configBean = KryoConverters.configDeserialize(byteArray)
@@ -204,10 +233,16 @@ data class ProxyEntity(
         TYPE_HYSTERIA -> "Hysteria" + hysteriaBean!!.protocolVersion
         TYPE_SSH -> "SSH"
         TYPE_WG -> "WireGuard"
+        TYPE_AWG -> "AmneziaWG"
         TYPE_TUIC -> "TUIC"
         TYPE_JUICITY -> "Juicity"
+        TYPE_SNELL -> "Snell"
+        TYPE_MASTERDNSVPN -> "MasterDnsVPN"
+        TYPE_BYEDPI -> "ByeDPI"
         TYPE_SHADOWTLS -> "ShadowTLS"
         TYPE_ANYTLS -> "AnyTLS"
+        TYPE_TRUST_TUNNEL -> "TrustTunnel"
+        TYPE_PROXY_SET -> proxySetBean!!.displayType()
         TYPE_CHAIN -> chainName
         TYPE_NEKO -> nekoBean!!.displayType()
         TYPE_CONFIG -> configBean!!.displayType()
@@ -231,10 +266,16 @@ data class ProxyEntity(
             TYPE_HYSTERIA -> hysteriaBean
             TYPE_SSH -> sshBean
             TYPE_WG -> wgBean
+            TYPE_AWG -> awgBean
             TYPE_TUIC -> tuicBean
             TYPE_JUICITY -> juicityBean
+            TYPE_SNELL -> snellBean
+            TYPE_MASTERDNSVPN -> masterDnsVPNBean
+            TYPE_BYEDPI -> byeDPIBean
             TYPE_SHADOWTLS -> shadowTLSBean
             TYPE_ANYTLS -> anyTLSBean
+            TYPE_TRUST_TUNNEL -> trustTunnelBean
+            TYPE_PROXY_SET -> proxySetBean
             TYPE_CHAIN -> chainBean
             TYPE_NEKO -> nekoBean
             TYPE_CONFIG -> configBean
@@ -245,6 +286,7 @@ data class ProxyEntity(
     fun haveLink(): Boolean {
         return when (type) {
             TYPE_CHAIN -> false
+            TYPE_PROXY_SET -> false
             else -> true
         }
     }
@@ -253,9 +295,12 @@ data class ProxyEntity(
         return when (requireBean()) {
             is SSHBean -> false
             is WireGuardBean -> false
+            is AmneziaWGBean -> false
             is ShadowTLSBean -> false
             is NekoBean -> false
             is ConfigBean -> false
+            is ProxySetBean -> false
+            is ByeDPIBean -> false
             else -> true
         }
     }
@@ -273,7 +318,12 @@ data class ProxyEntity(
             is HysteriaBean -> toUri()
             is TuicBean -> toUri()
             is JuicityBean -> toUri()
+            is TrustTunnelBean -> toUri()
+            is SnellBean -> toUri()
+            is MasterDnsVPNBean -> toUri()
+            is ByeDPIBean -> ""
             is AnyTLSBean -> toUri()
+            is ProxySetBean -> error("Proxy sets can only be exported as configuration")
             is NekoBean -> ""
             else -> toUniversalLink()
         }
@@ -283,6 +333,10 @@ data class ProxyEntity(
         var name = "${requireBean().displayName()}.json"
 
         return with(requireBean()) {
+            when (this) {
+                is WireGuardBean -> return buildWireGuardConfig() to "${displayName()}.conf"
+                is AmneziaWGBean -> return buildAmneziaWGConfig() to "${displayName()}.conf"
+            }
             StringBuilder().apply {
                 val config = buildConfig(this@ProxyEntity, forExport = true)
                 append(config.config)
@@ -324,11 +378,63 @@ data class ProxyEntity(
         return when (type) {
             TYPE_TROJAN_GO -> true
             TYPE_MIERU -> true
-            TYPE_NAIVE -> true
             TYPE_HYSTERIA -> !hysteriaBean!!.canUseSingBox()
             TYPE_NEKO -> true
             else -> false
         }
+    }
+
+    fun isByeDPI(): Boolean = type == TYPE_BYEDPI
+
+    fun containsByeDPI(): Boolean {
+        if (isByeDPI()) return true
+        return when (val bean = requireBean()) {
+            is ChainBean -> {
+                val profiles = SagerDatabase.proxyDao.getEntities(bean.proxies).associateBy { it.id }
+                bean.proxies.any { proxyId -> profiles[proxyId]?.containsByeDPI() == true }
+            }
+
+            is ProxySetBean -> {
+                val profiles = when (bean.type) {
+                    ProxySetBean.TYPE_LIST -> SagerDatabase.proxyDao.getEntities(bean.proxies)
+                    ProxySetBean.TYPE_GROUP -> SagerDatabase.proxyDao.getByGroup(bean.groupId)
+                    else -> emptyList()
+                }
+                profiles.any { it.id != id && it.containsByeDPI() }
+            }
+
+            else -> false
+        }
+    }
+
+    fun containsMasterDnsVPN(): Boolean {
+        if (type == TYPE_MASTERDNSVPN) return true
+        return when (val bean = requireBean()) {
+            is ChainBean -> {
+                val profiles = SagerDatabase.proxyDao.getEntities(bean.proxies).associateBy { it.id }
+                bean.proxies.any { proxyId -> profiles[proxyId]?.containsMasterDnsVPN() == true }
+            }
+
+            is ProxySetBean -> {
+                val profiles = when (bean.type) {
+                    ProxySetBean.TYPE_LIST -> SagerDatabase.proxyDao.getEntities(bean.proxies)
+                    ProxySetBean.TYPE_GROUP -> SagerDatabase.proxyDao.getByGroup(bean.groupId)
+                    else -> emptyList()
+                }
+                profiles.any { it.id != id && it.containsMasterDnsVPN() }
+            }
+
+            else -> false
+        }
+    }
+
+    fun startsWithByeDPI(): Boolean {
+        if (isByeDPI()) return true
+        val bean = requireBean()
+        if (bean !is ChainBean) return false
+        val firstProfileId = bean.proxies.firstOrNull() ?: return false
+        val firstProfile = SagerDatabase.proxyDao.getById(firstProfileId) ?: return false
+        return firstProfile.startsWithByeDPI()
     }
 
     fun singMux(): MultiplexOptions? {
@@ -422,10 +528,16 @@ data class ProxyEntity(
         hysteriaBean = null
         sshBean = null
         wgBean = null
+        awgBean = null
         tuicBean = null
         juicityBean = null
+        snellBean = null
+        masterDnsVPNBean = null
+        byeDPIBean = null
         shadowTLSBean = null
         anyTLSBean = null
+        trustTunnelBean = null
+        proxySetBean = null
         chainBean = null
         configBean = null
         nekoBean = null
@@ -491,6 +603,11 @@ data class ProxyEntity(
                 wgBean = bean
             }
 
+            is AmneziaWGBean -> {
+                type = TYPE_AWG
+                awgBean = bean
+            }
+
             is TuicBean -> {
                 type = TYPE_TUIC
                 tuicBean = bean
@@ -501,6 +618,21 @@ data class ProxyEntity(
                 juicityBean = bean
             }
 
+            is SnellBean -> {
+                type = TYPE_SNELL
+                snellBean = bean
+            }
+
+            is MasterDnsVPNBean -> {
+                type = TYPE_MASTERDNSVPN
+                masterDnsVPNBean = bean
+            }
+
+            is ByeDPIBean -> {
+                type = TYPE_BYEDPI
+                byeDPIBean = bean
+            }
+
             is ShadowTLSBean -> {
                 type = TYPE_SHADOWTLS
                 shadowTLSBean = bean
@@ -509,6 +641,16 @@ data class ProxyEntity(
             is AnyTLSBean -> {
                 type = TYPE_ANYTLS
                 anyTLSBean = bean
+            }
+
+            is TrustTunnelBean -> {
+                type = TYPE_TRUST_TUNNEL
+                trustTunnelBean = bean
+            }
+
+            is ProxySetBean -> {
+                type = TYPE_PROXY_SET
+                proxySetBean = bean
             }
 
             is ChainBean -> {
@@ -546,10 +688,16 @@ data class ProxyEntity(
                 TYPE_HYSTERIA -> HysteriaSettingsActivity::class.java
                 TYPE_SSH -> SSHSettingsActivity::class.java
                 TYPE_WG -> WireGuardSettingsActivity::class.java
+                TYPE_AWG -> AmneziaWGSettingsActivity::class.java
                 TYPE_TUIC -> TuicSettingsActivity::class.java
                 TYPE_JUICITY -> JuicitySettingsActivity::class.java
+                TYPE_SNELL -> SnellSettingsActivity::class.java
+                TYPE_MASTERDNSVPN -> MasterDnsVPNSettingsActivity::class.java
+                TYPE_BYEDPI -> ByeDPISettingsActivity::class.java
                 TYPE_SHADOWTLS -> ShadowTLSSettingsActivity::class.java
                 TYPE_ANYTLS -> AnyTLSSettingsActivity::class.java
+                TYPE_TRUST_TUNNEL -> TrustTunnelSettingsActivity::class.java
+                TYPE_PROXY_SET -> ProxySetSettingsActivity::class.java
                 TYPE_CHAIN -> ChainSettingsActivity::class.java
                 TYPE_CONFIG -> ConfigSettingActivity::class.java
                 else -> throw IllegalArgumentException()
@@ -565,6 +713,9 @@ data class ProxyEntity(
 
         @Query("select * from proxy_entities")
         fun getAll(): List<ProxyEntity>
+
+        @Query("SELECT id FROM proxy_entities ORDER BY id")
+        fun getAllIds(): List<Long>
 
         @Query("SELECT id FROM proxy_entities WHERE groupId = :groupId ORDER BY userOrder")
         fun getIdsByGroup(groupId: Long): List<Long>

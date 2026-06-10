@@ -43,6 +43,7 @@ class SagerConnection(
         fun cbSpeedUpdate(stats: SpeedDisplayData) {}
         fun cbTrafficUpdate(data: TrafficData) {}
         fun cbSelectorUpdate(id: Long) {}
+        fun cbMasterDnsVPNResolverProgress(found: Int, total: Int, ready: Boolean) {}
 
         fun stateChanged(state: BaseService.State, profileName: String?, msg: String?)
 
@@ -90,6 +91,13 @@ class SagerConnection(
             val callback = callback ?: return
             runOnMainDispatcher {
                 callback.cbSelectorUpdate(id)
+            }
+        }
+
+        override fun cbMasterDnsVPNResolverProgress(found: Int, total: Int, ready: Boolean) {
+            val callback = callback ?: return
+            runOnMainDispatcher {
+                callback.cbMasterDnsVPNResolverProgress(found, total, ready)
             }
         }
 

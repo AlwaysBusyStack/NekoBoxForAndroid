@@ -25,7 +25,7 @@
     <string name="group_status_empty">空白群組</string>
     <string name="group_status_empty_subscription">尚未更新</string>
     <string name="group_status_proxies">%d 個代理</string>
-    <string name="group_status_proxies_subscription">%d 個代理 | 更新於 %s</string>
+    <string name="group_status_proxies_subscription">更新：%1$s\n%2$d 個代理</string>
     <string name="group_no_difference">%s: 沒有變化</string>
     <string name="group_updated">%s: 更新了 %d 個代理</string>
     <string name="group_show_diff">變化</string>
@@ -58,7 +58,7 @@
 \n直連： %3$s↑ %4$s↓</string>
     <string name="speed">%s/s</string>
     <string name="connection_test_testing">正在測試…</string>
-    <string name="connection_test_available">成功：HTTPS 握手花費 %dms</string>
+    <string name="connection_test_available">成功：HTTPS RTT %dms</string>
     <string name="connection_test_error">失敗：%s</string>
     <string name="connection_test_fail">網路不可用</string>
     <string name="connection_test_error_status_code">錯誤碼：#%d</string>
@@ -187,7 +187,7 @@
     <string name="enable_dns_routing">啟用 DNS 路由</string>
     <string name="direct_dns">直連 DNS</string>
     <string name="remote_dns">遠端 DNS</string>
-    <string name="connection_test_available_http">成功：HTTP 握手花費 %d 毫秒</string>
+    <string name="connection_test_available_http">成功：HTTP RTT %d 毫秒</string>
     <string name="allow_insecure_sum">停用憑證檢查。當啟用時，此設定檔將和純文字同等安全</string>
     <string name="allow_insecure">允許不安全的連線</string>
     <string name="security_settings">安全設定</string>
@@ -241,6 +241,8 @@
     <string name="select_profile">選取設定檔</string>
     <string name="proxy_chain">代理鏈結</string>
     <string name="custom_config">客製化設定檔</string>
+    <string name="certificate_authority">數位憑證認證機構</string>
+    <string name="system_and_user">系統和使用者</string>
     <string name="balancer">負載平衡器</string>
     <string name="balancer_settings">負載平衡器設定</string>
     <string name="balancer_type">類型</string>
@@ -325,6 +327,7 @@
     <string name="service_subscription">訂閱更新服務</string>
     <string name="subscription_update">訂閱更新</string>
     <string name="subscription_update_message">正在更新 %s …</string>
+    <string name="subscription_update_timeout">訂閱更新在 %d 秒後逾時</string>
     <string name="group_filter">篩選</string>
     <string name="subscription_used">已用 %s</string>
     <string name="subscription_traffic">已用 %s / 剩餘 %s</string>

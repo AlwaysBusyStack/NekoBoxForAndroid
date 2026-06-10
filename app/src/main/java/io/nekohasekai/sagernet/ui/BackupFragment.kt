@@ -8,8 +8,8 @@ import android.os.Parcelable
 import android.provider.OpenableColumns
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.core.content.FileProvider
+import androidx.core.view.ViewCompat
 import androidx.core.view.isVisible
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.jakewharton.processphoenix.ProcessPhoenix
@@ -24,6 +24,7 @@ import io.nekohasekai.sagernet.databinding.LayoutBackupBinding
 import io.nekohasekai.sagernet.databinding.LayoutImportBinding
 import io.nekohasekai.sagernet.databinding.LayoutProgressBinding
 import io.nekohasekai.sagernet.ktx.*
+import io.nekohasekai.sagernet.widget.ListListener
 import kotlinx.coroutines.delay
 import moe.matsuri.nb4a.utils.Util
 import org.json.JSONArray
@@ -106,6 +107,8 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
         super.onViewCreated(view, savedInstanceState)
 
         val binding = LayoutBackupBinding.bind(view)
+        binding.root.clipToPadding = false
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root, ListListener)
 
         binding.actionExport.setOnClickListener {
             runOnDefaultDispatcher {
@@ -475,7 +478,7 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
 
                             val binding = LayoutProgressBinding.inflate(layoutInflater)
                             binding.content.text = getString(R.string.backup_importing)
-                            val dialog = AlertDialog.Builder(requireContext())
+                            val dialog = MaterialAlertDialogBuilder(requireContext())
                                 .setView(binding.root)
                                 .setCancelable(false)
                                 .show()
@@ -540,8 +543,11 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
             put("version", 1)
             if (profile) {
                 put("profiles", JSONArray().apply {
-                    SagerDatabase.proxyDao.getAll().forEach {
-                        put(it.toBase64Str())
+                    val proxyDao = SagerDatabase.proxyDao
+                    proxyDao.getAllIds().forEach { profileId ->
+                        proxyDao.getById(profileId)?.let {
+                            put(it.toBase64Str())
+                        }
                     }
                 })
 
@@ -656,7 +662,7 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
 
                         val binding = LayoutProgressBinding.inflate(layoutInflater)
                         binding.content.text = getString(R.string.backup_importing)
-                        val dialog = AlertDialog.Builder(requireContext())
+                        val dialog = MaterialAlertDialogBuilder(requireContext())
                             .setView(binding.root)
                             .setCancelable(false)
                             .show()
@@ -746,6 +752,10 @@ class BackupFragment : NamedFragment(R.layout.layout_backup) {
             }
             PublicDatabase.kvPairDao.reset()
             PublicDatabase.kvPairDao.insert(settings)
+            // Never let a restore clear the first-setup flag — older backups simply
+            // won't contain this key, which would default it to false and re-trigger
+            // the first-setup flow on next launch.
+            DataStore.proxyAppsFirstSetup = true
         }
     }
 

@@ -18,48 +18,32 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-        <!-- We double trackThickness as half of it will be invisible -->
-        <com.google.android.material.progressindicator.CircularProgressIndicator
-            android:id="@+id/fabProgress"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:max="1"
-            android:visibility="invisible"
-            app:indicatorColor="?colorSecondary"
-            app:layout_anchor="@+id/fab"
-            app:layout_anchorGravity="center"
-            app:layout_behavior="io.nekohasekai.sagernet.widget.FabProgressBehavior"
-            app:trackCornerRadius="@dimen/mtrl_progress_track_thickness"
-            app:trackThickness="8dp" />
-
-        <io.nekohasekai.sagernet.widget.ServiceButton
-            android:id="@+id/fab"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:elevation="6dp"
-            android:nextFocusDown="@+id/stats"
-            app:backgroundTint="?colorPrimary"
-            app:layout_anchor="@id/stats"
-            app:pressedTranslationZ="6dp"
-            app:srcCompat="@drawable/ic_service_idle" />
-
         <io.nekohasekai.sagernet.widget.StatsBar
             android:id="@+id/stats"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"
             android:nextFocusUp="@+id/fab"
-            app:backgroundTint="?colorPrimary"
+            app:backgroundTint="?colorSurfaceContainerHigh"
             app:contentInsetStart="0dp"
+            app:fabAlignmentMode="center"
+            app:fabAnchorMode="cradle"
+            app:fabCradleMargin="8dp"
+            app:fabCradleRoundedCornerRadius="24dp"
+            app:fabCradleVerticalOffset="0dp"
             app:hideOnScroll="true"
-            app:layout_scrollFlags="enterAlways|scroll">
+            app:layout_scrollFlags="enterAlways|scroll"
+            app:shapeAppearance="@style/ShapeAppearance.SagerNet.Material3.BottomAppBar">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="?android:attr/selectableItemBackground"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:paddingStart="16dp"
+                android:paddingTop="24dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="24dp">
 
                 <TextView
                     android:id="@+id/tx"
@@ -69,7 +53,7 @@
                     android:layout_gravity="fill_horizontal"
                     android:ellipsize="marquee"
                     android:singleLine="true"
-                    android:textColor="@color/white"
+                    android:textColor="?attr/colorOnSurface"
                     android:textSize="14sp" />
 
                 <TextView
@@ -80,8 +64,18 @@
                     android:layout_gravity="fill_horizontal"
                     android:ellipsize="marquee"
                     android:singleLine="true"
-                    android:textColor="@color/white"
+                    android:textColor="?attr/colorOnSurface"
                     android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/ip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="fill_horizontal"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="16sp" />
 
                 <TextView
                     android:id="@+id/status"
@@ -90,7 +84,7 @@
                     android:layout_gravity="fill_horizontal"
                     android:ellipsize="end"
                     android:maxLines="1"
-                    android:textColor="@color/white"
+                    android:textColor="?attr/colorOnSurface"
                     android:textSize="16sp"
                     tools:text="@string/connection_test_available" />
 
@@ -98,28 +92,42 @@
 
         </io.nekohasekai.sagernet.widget.StatsBar>
 
+        <io.nekohasekai.sagernet.widget.ServiceButton
+            android:id="@+id/fab"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:elevation="6dp"
+            android:nextFocusDown="@+id/stats"
+            android:translationZ="12dp"
+            app:backgroundTint="?attr/colorPrimary"
+            app:layout_anchor="@id/stats"
+            app:pressedTranslationZ="6dp"
+            app:srcCompat="@drawable/ic_service_idle"
+            app:tint="?attr/colorOnPrimary" />
+
+        <!-- We double trackThickness as half of it will be invisible -->
+        <com.google.android.material.progressindicator.CircularProgressIndicator
+            android:id="@+id/fabProgress"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:max="1"
+            android:translationZ="13dp"
+            android:visibility="invisible"
+            app:indicatorColor="?attr/colorPrimary"
+            app:layout_anchor="@id/fab"
+            app:layout_anchorGravity="center"
+            app:layout_behavior="io.nekohasekai.sagernet.widget.FabProgressBehavior"
+            app:trackCornerRadius="@dimen/mtrl_progress_track_thickness"
+            app:trackThickness="8dp" />
+
     </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
     <com.google.android.material.navigation.NavigationView
         android:id="@+id/nav_view"
-        style="@style/Widget.Design.NavigationView"
+        style="@style/Widget.SagerNet.Material3.NavigationView"
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
         android:layout_gravity="start"
-        app:itemIconTint="@color/navigation_icon"
-        app:itemTextColor="@color/navigation_icon"
-        app:menu="@menu/main_drawer_menu" />
-
-    <com.google.android.material.navigation.NavigationView
-        android:id="@+id/nav_view_black"
-        style="@style/Widget.Design.NavigationView"
-        android:layout_width="wrap_content"
-        android:layout_height="match_parent"
-        android:layout_gravity="start"
-        app:itemIconTint="@color/navigation_icon"
-        app:itemShapeAppearance="@style/ShapeAppearance.MaterialComponents.MediumComponent"
-        app:itemShapeFillColor="@color/navigation_item"
-        app:itemTextColor="@color/navigation_icon"
         app:menu="@menu/main_drawer_menu" />
 
 </androidx.drawerlayout.widget.DrawerLayout>

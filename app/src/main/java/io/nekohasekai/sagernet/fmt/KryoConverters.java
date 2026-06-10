@@ -13,19 +13,25 @@ import io.nekohasekai.sagernet.database.SubscriptionBean;
 import io.nekohasekai.sagernet.fmt.http.HttpBean;
 import io.nekohasekai.sagernet.fmt.hysteria.HysteriaBean;
 import io.nekohasekai.sagernet.fmt.internal.ChainBean;
+import io.nekohasekai.sagernet.fmt.internal.ProxySetBean;
+import io.nekohasekai.sagernet.fmt.masterdns.MasterDnsVPNBean;
 import io.nekohasekai.sagernet.fmt.mieru.MieruBean;
 import io.nekohasekai.sagernet.fmt.naive.NaiveBean;
 import io.nekohasekai.sagernet.fmt.shadowsocks.ShadowsocksBean;
 import io.nekohasekai.sagernet.fmt.shadowsocksr.ShadowsocksRBean;
+import io.nekohasekai.sagernet.fmt.snell.SnellBean;
 import moe.matsuri.nb4a.proxy.anytls.AnyTLSBean;
+import moe.matsuri.nb4a.proxy.byedpi.ByeDPIBean;
 import moe.matsuri.nb4a.proxy.shadowtls.ShadowTLSBean;
 import io.nekohasekai.sagernet.fmt.socks.SOCKSBean;
 import io.nekohasekai.sagernet.fmt.ssh.SSHBean;
 import io.nekohasekai.sagernet.fmt.trojan.TrojanBean;
 import io.nekohasekai.sagernet.fmt.trojan_go.TrojanGoBean;
+import io.nekohasekai.sagernet.fmt.trusttunnel.TrustTunnelBean;
 import io.nekohasekai.sagernet.fmt.tuic.TuicBean;
 import io.nekohasekai.sagernet.fmt.juicity.JuicityBean;
 import io.nekohasekai.sagernet.fmt.v2ray.VMessBean;
+import io.nekohasekai.sagernet.fmt.wireguard.AmneziaWGBean;
 import io.nekohasekai.sagernet.fmt.wireguard.WireGuardBean;
 import io.nekohasekai.sagernet.ktx.KryosKt;
 import io.nekohasekai.sagernet.ktx.Logs;
@@ -140,6 +146,12 @@ public class KryoConverters {
     }
 
     @TypeConverter
+    public static AmneziaWGBean amneziaWGDeserialize(byte[] bytes) {
+        if (JavaUtil.isEmpty(bytes)) return null;
+        return deserialize(new AmneziaWGBean(), bytes);
+    }
+
+    @TypeConverter
     public static TuicBean tuicDeserialize(byte[] bytes) {
         if (JavaUtil.isEmpty(bytes)) return null;
         return deserialize(new TuicBean(), bytes);
@@ -149,6 +161,30 @@ public class KryoConverters {
     public static JuicityBean juicityDeserialize(byte[] bytes) {
         if (JavaUtil.isEmpty(bytes)) return null;
         return deserialize(new JuicityBean(), bytes);
+    }
+
+    @TypeConverter
+    public static TrustTunnelBean trustTunnelDeserialize(byte[] bytes) {
+        if (JavaUtil.isEmpty(bytes)) return null;
+        return deserialize(new TrustTunnelBean(), bytes);
+    }
+
+    @TypeConverter
+    public static SnellBean snellDeserialize(byte[] bytes) {
+        if (JavaUtil.isEmpty(bytes)) return null;
+        return deserialize(new SnellBean(), bytes);
+    }
+
+    @TypeConverter
+    public static MasterDnsVPNBean masterDnsVPNDeserialize(byte[] bytes) {
+        if (JavaUtil.isEmpty(bytes)) return null;
+        return deserialize(new MasterDnsVPNBean(), bytes);
+    }
+
+    @TypeConverter
+    public static ByeDPIBean byeDPIDeserialize(byte[] bytes) {
+        if (JavaUtil.isEmpty(bytes)) return null;
+        return deserialize(new ByeDPIBean(), bytes);
     }
 
     @TypeConverter
@@ -168,6 +204,12 @@ public class KryoConverters {
     public static ChainBean chainDeserialize(byte[] bytes) {
         if (JavaUtil.isEmpty(bytes)) return null;
         return deserialize(new ChainBean(), bytes);
+    }
+
+    @TypeConverter
+    public static ProxySetBean proxySetDeserialize(byte[] bytes) {
+        if (JavaUtil.isEmpty(bytes)) return null;
+        return deserialize(new ProxySetBean(), bytes);
     }
 
     @TypeConverter

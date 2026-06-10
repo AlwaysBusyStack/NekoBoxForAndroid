@@ -36,7 +36,7 @@
                     android:layout_marginTop="16dp"
                     android:text="@string/stun_test_summary"
                     android:textAppearance="?attr/textAppearanceBody2"
-                    android:textColor="?android:attr/textColorSecondary" />
+                    android:textColor="?attr/colorOnSurfaceVariant" />
 
             </LinearLayout>
 
@@ -49,12 +49,12 @@
 
                 <Button
                     android:id="@+id/stunTest"
-                    style="@style/Widget.AppCompat.Button.Borderless"
+                    style="@style/Widget.Material3.Button.TextButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="8dp"
                     android:text="@string/start"
-                    android:textColor="?colorPrimary" />
+                    android:textColor="?attr/colorPrimary" />
             </LinearLayout>
 
         </LinearLayout>

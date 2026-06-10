@@ -34,7 +34,7 @@
     <string name="group_status_empty">Grupo vacío</string> 
     <string name="group_status_empty_subscription">Aún no actualizado</string> 
     <string name="group_status_proxies">%d proxys</string> 
-    <string name="group_status_proxies_subscription">%d proxys | Actualizado el %s</string> 
+    <string name="group_status_proxies_subscription">Actualizado: %1$s\n%2$d proxys</string>
     <string name="group_no_difference">%s: Sin diferencia</string> 
     <string name="group_updated">%s: %d proxys actualizados</string> 
     <string name="group_show_diff">Diferencia</string> 
@@ -197,6 +197,8 @@
     <string name="select_profile">Seleccionar perfil</string>
     <string name="proxy_chain">Cadena del proxy</string>
     <string name="custom_config">Configuración personalizada</string> 
+    <string name="certificate_authority">Autoridad de certificación</string>
+    <string name="system_and_user">Sistema y usuario</string>
     <string name="balancer">Equilibrador</string> 
     <string name="balancer_settings">Ajustes del equilibrador</string> 
     <string name="balancer_type">Tipo</string> 
@@ -340,6 +342,7 @@
     <string name="service_subscription">Servicio de actualización de suscripción</string> 
     <string name="subscription_update">Actualización de suscripción</string> 
     <string name="subscription_update_message">Actualizando %s…</string> 
+    <string name="subscription_update_timeout">La actualización de la suscripción agotó el tiempo tras %d segundos</string> 
     <string name="group_filter">Filtrar</string>
     <string name="subscription_used">%s usado</string>
     <string name="subscription_traffic">%s usados ​​/ %s restantes</string> 

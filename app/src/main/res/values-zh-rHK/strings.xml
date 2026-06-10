@@ -23,7 +23,7 @@
     <string name="group_deleted">已移除：
 \n%s</string>
     <string name="connection_test_testing">測試中……</string>
-    <string name="connection_test_available">連接成功: HTTPS 握手需時 %dms</string>
+    <string name="connection_test_available">連接成功: HTTPS RTT %dms</string>
     <string name="tls">使用 TLS</string>
     <string name="server_address">伺服器</string>
     <string name="server_port">伺服器端口</string>
@@ -62,7 +62,7 @@
     <string name="group_create">創建分組</string>
     <string name="group_delete_confirm_prompt">你確定要移除這個分組嗎？</string>
     <string name="group_status_proxies">%d 個代理</string>
-    <string name="group_status_proxies_subscription">%d 個代理 | 於 %s 更新</string>
+    <string name="group_status_proxies_subscription">更新：%1$s\n%2$d 個代理</string>
     <string name="group_diff">變化 (%s)</string>
     <string name="group_show_diff">變化</string>
     <string name="group_duplicate">重複：

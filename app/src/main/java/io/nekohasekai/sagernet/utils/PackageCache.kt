@@ -1,6 +1,5 @@
 package io.nekohasekai.sagernet.utils
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
@@ -43,12 +42,7 @@ object PackageCache {
                     or PackageManager.GET_META_DATA
         )
 
-        installedPackages = rawPackageInfo.filter {
-            when (it.packageName) {
-                "android" -> true
-                else -> it.requestedPermissions?.contains(Manifest.permission.INTERNET) == true
-            }
-        }.associateBy { it.packageName }
+        installedPackages = rawPackageInfo.associateBy { it.packageName }
 
         installedPluginPackages = rawPackageInfo.filter {
             Plugins.isExe(it)

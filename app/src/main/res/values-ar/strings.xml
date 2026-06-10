@@ -29,7 +29,7 @@
     <string name="document">وثيقة</string>
     <string name="theme">موضوع</string>
     <string name="menu_about">حول</string>
-    <string name="group_status_proxies_subscription">%d البروکسیز | تم التحديث في %s</string>
+    <string name="group_status_proxies_subscription">تحديث: %1$s\n%2$d بروكسي</string>
     <string name="group_updated">%s: تم تحديث %d البروکسیز</string>
     <string name="port_http">منفذ بروکسی HTTP</string>
     <string name="port_proxy">منفذ بروکسی SOCKS5</string>
@@ -234,6 +234,7 @@
     <string name="subscription_used">%s مستخدمة</string>
     <string name="group_filter">التكرير</string>
     <string name="subscription_update_message">جاري تحديث %s …</string>
+    <string name="subscription_update_timeout">انتهت مهلة تحديث الاشتراك بعد %d ثانية</string>
     <string name="subscription_update">تحديث الاشتراك</string>
     <string name="service_subscription">خدمة تحديث الاشتراك</string>
     <string name="ooc_missing_protocol">يتطلب الاشتراك دعم البروتوكول %s، ولكن لا يمكن العثور عليه. سيتم تجاهل الملفات الشخصية غير المدعومة.</string>

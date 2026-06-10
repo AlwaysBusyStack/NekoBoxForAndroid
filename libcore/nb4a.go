@@ -1,10 +1,14 @@
 package libcore
 
 import (
+	"errors"
 	"fmt"
 	"libcore/device"
+	"libcore/masterdnsvpnbridge"
+	"libcore/protect"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	_ "unsafe"
@@ -20,6 +24,9 @@ import (
 
 //go:linkname resourcePaths github.com/sagernet/sing-box/constant.resourcePaths
 var resourcePaths []string
+var protectPath = "protect_path"
+var workingPath string
+var tempPath string
 
 func NekoLogPrintln(s string) {
 	log.Println(s)
@@ -33,6 +40,11 @@ func ForceGc() {
 	go debug.FreeOSMemory()
 }
 
+func PerformLibcoreGCSweep() {
+	runtime.GC()
+	debug.FreeOSMemory()
+}
+
 func InitCore(process, cachePath, internalAssets, externalAssets string,
 	maxLogSizeKb int32, logEnable bool,
 	if1 NB4AInterface, if2 BoxPlatformInterface, if3 LocalDNSTransport,
@@ -42,14 +54,33 @@ func InitCore(process, cachePath, internalAssets, externalAssets string,
 
 	neko_common.RunMode = neko_common.RunMode_NekoBoxForAndroid
 	intfNB4A = if1
+	masterdnsvpnbridge.SetReporter(func(found int32, total int32, ready bool) {
+		if intfNB4A != nil {
+			intfNB4A.MasterDnsVPNResolverProgress(found, total, ready)
+		}
+	})
+	masterdnsvpnbridge.SetFailureReporter(func(noWorkingDNS bool, message string) {
+		if intfNB4A != nil {
+			intfNB4A.MasterDnsVPNStartupFailed(noWorkingDNS, message)
+		}
+	})
 	intfBox = if2
 	useProcfs = intfBox.UseProcFS()
 	gLocalDNSTransport = newPlatformTransport(if3, "", option.LocalDNSServerOptions{})
+	protect.SetProtector(func(fd int) error {
+		if !isBgProcess {
+			return sendFdToProtect(fd, protectPath)
+		}
+		return intfBox.AutoDetectInterfaceControl(int32(fd))
+	})
 
 	// Working dir
 	tmp := filepath.Join(cachePath, "../no_backup")
 	os.MkdirAll(tmp, 0755)
 	os.Chdir(tmp)
+	protectPath = filepath.Join(tmp, "protect_path")
+	workingPath = tmp
+	tempPath = cachePath
 
 	// sing-box fs
 	resourcePaths = append(resourcePaths, externalAssets)
@@ -72,12 +103,6 @@ func InitCore(process, cachePath, internalAssets, externalAssets string,
 		defer device.DeferPanicToError("InitCore-go", func(err error) { log.Println(err) })
 		device.GoDebug(process)
 
-		// certs
-		pem, err := os.ReadFile(externalAssetsPath + "ca.pem")
-		if err == nil {
-			updateRootCACerts(pem)
-		}
-
 		// bg
 		if isBgProcess {
 			extractAssets()
@@ -85,12 +110,17 @@ func InitCore(process, cachePath, internalAssets, externalAssets string,
 	}()
 }
 
-func sendFdToProtect(fd int, path string) error {
+func sendFdToProtect(fd int, path string) (err error) {
+	if path == "" {
+		path = protectPath
+	}
 	socketFd, err := unix.Socket(unix.AF_UNIX, unix.SOCK_STREAM, 0)
 	if err != nil {
 		return fmt.Errorf("failed to create unix socket: %w", err)
 	}
-	defer unix.Close(socketFd)
+	defer func() {
+		err = errors.Join(err, unix.Close(socketFd))
+	}()
 
 	var timeout unix.Timeval
 	timeout.Usec = 100 * 1000

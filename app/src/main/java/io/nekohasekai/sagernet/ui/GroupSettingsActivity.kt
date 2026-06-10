@@ -21,6 +21,7 @@ import io.nekohasekai.sagernet.GroupType
 import io.nekohasekai.sagernet.Key
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.SagerNet
+import io.nekohasekai.sagernet.SpoofApp
 import io.nekohasekai.sagernet.SubscriptionFilterMode
 import io.nekohasekai.sagernet.database.*
 import io.nekohasekai.sagernet.database.preference.OnPreferenceDataStoreChangeListener
@@ -31,8 +32,11 @@ import io.nekohasekai.sagernet.ktx.onMainDispatcher
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
 import io.nekohasekai.sagernet.widget.ListListener
 import io.nekohasekai.sagernet.widget.OutboundPreference
+import io.nekohasekai.sagernet.widget.UserAgentPreference
 import kotlinx.parcelize.Parcelize
+import moe.matsuri.nb4a.ui.MaterialSwitchPreference
 import moe.matsuri.nb4a.ui.SimpleMenuPreference
+import moe.matsuri.nb4a.ui.showMaterialEditTextPreferenceDialog
 
 @Suppress("UNCHECKED_CAST")
 class GroupSettingsActivity(
@@ -48,6 +52,7 @@ class GroupSettingsActivity(
         DataStore.groupType = type
         DataStore.groupOrder = order
         DataStore.groupIsSelector = isSelector
+        DataStore.groupForceUTLS = forceUTLS
 
         DataStore.frontProxy = frontProxy
         DataStore.landingProxy = landingProxy
@@ -64,6 +69,8 @@ class GroupSettingsActivity(
         DataStore.subscriptionAutoUpdateDelay = subscription.autoUpdateDelay
         DataStore.subscriptionFilterMode = subscription.filterMode
         DataStore.subscriptionFilterRegex = subscription.filterRegex
+        DataStore.subscriptionHwidEnabled = subscription.hwidEnabled
+        DataStore.subscriptionSpoofApp = subscription.spoofApp
     }
 
     fun ProxyGroup.serialize() {
@@ -71,6 +78,7 @@ class GroupSettingsActivity(
         type = DataStore.groupType
         order = DataStore.groupOrder
         isSelector = DataStore.groupIsSelector
+        forceUTLS = DataStore.groupForceUTLS
 
         frontProxy = if (DataStore.frontProxyTmp == 3) DataStore.frontProxy else -1
         landingProxy = if (DataStore.landingProxyTmp == 3) DataStore.landingProxy else -1
@@ -87,6 +95,8 @@ class GroupSettingsActivity(
                 autoUpdateDelay = DataStore.subscriptionAutoUpdateDelay
                 filterMode = DataStore.subscriptionFilterMode
                 filterRegex = DataStore.subscriptionFilterRegex
+                hwidEnabled = DataStore.subscriptionHwidEnabled
+                spoofApp = DataStore.subscriptionSpoofApp
             }
         }
     }
@@ -150,7 +160,7 @@ class GroupSettingsActivity(
         }
 
         val subscriptionAutoUpdate =
-            findPreference<SwitchPreference>(Key.SUBSCRIPTION_AUTO_UPDATE)!!
+            findPreference<MaterialSwitchPreference>(Key.SUBSCRIPTION_AUTO_UPDATE)!!
         val subscriptionAutoUpdateDelay =
             findPreference<EditTextPreference>(Key.SUBSCRIPTION_AUTO_UPDATE_DELAY)!!
 
@@ -179,6 +189,38 @@ class GroupSettingsActivity(
         updateFilterMode()
         subscriptionFilterMode.setOnPreferenceChangeListener { _, newValue ->
             updateFilterMode((newValue as String).toInt())
+            true
+        }
+
+        val subscriptionHwidEnabled =
+            findPreference<MaterialSwitchPreference>(Key.SUBSCRIPTION_HWID_ENABLED)!!
+        val subscriptionSpoofApp =
+            findPreference<SimpleMenuPreference>(Key.SUBSCRIPTION_SPOOF_APP)!!
+        val subscriptionUserAgent =
+            findPreference<UserAgentPreference>(Key.SUBSCRIPTION_USER_AGENT)!!
+
+        subscriptionSpoofApp.isEnabled = subscriptionHwidEnabled.isChecked
+
+        subscriptionHwidEnabled.setOnPreferenceChangeListener { _, newValue ->
+            val enabled = newValue as Boolean
+            subscriptionSpoofApp.isEnabled = enabled
+            if (!enabled) {
+                subscriptionUserAgent.text = ""
+                DataStore.subscriptionUserAgent = ""
+                subscriptionUserAgent.notifyChanged()
+            }
+            true
+        }
+
+        subscriptionSpoofApp.setOnPreferenceChangeListener { _, newValue ->
+            val ua = when ((newValue as String).toInt()) {
+                SpoofApp.HAPP -> "Happ/3.17.0/Android/17756505247711753599"
+                SpoofApp.V2RAY_TUN -> "v2raytun/android"
+                else -> ""
+            }
+            subscriptionUserAgent.text = ua
+            DataStore.subscriptionUserAgent = ua
+            subscriptionUserAgent.notifyChanged()
             true
         }
     }
@@ -301,6 +343,9 @@ class GroupSettingsActivity(
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.profile_config_menu, menu)
+        if (DataStore.editingId != 0L && !GroupManager.canDelete(DataStore.editingId)) {
+            menu.findItem(R.id.action_delete)?.isVisible = false
+        }
         return true
     }
 
@@ -358,6 +403,12 @@ class GroupSettingsActivity(
             R.id.action_delete -> {
                 if (DataStore.editingId == 0L) {
                     requireActivity().finish()
+                } else if (!GroupManager.canDelete(DataStore.editingId)) {
+                    Toast.makeText(
+                        requireContext(),
+                        R.string.group_delete_unavailable,
+                        Toast.LENGTH_SHORT
+                    ).show()
                 } else {
                     DeleteConfirmationDialogFragment().apply {
                         arg(GroupIdArg(DataStore.editingId))
@@ -377,6 +428,11 @@ class GroupSettingsActivity(
             else -> false
         }
 
+        override fun onDisplayPreferenceDialog(preference: Preference) {
+            if (showMaterialEditTextPreferenceDialog(preference)) return
+            super.onDisplayPreferenceDialog(preference)
+        }
+
     }
 
     object PasswordSummaryProvider : Preference.SummaryProvider<EditTextPreference> {
@@ -392,6 +448,14 @@ class GroupSettingsActivity(
 
     }
 
+    private fun showInvalidProfileDialog(messageResId: Int) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.invalid_profile)
+            .setMessage(messageResId)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
     val selectProfileForAddFront = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
@@ -399,9 +463,16 @@ class GroupSettingsActivity(
             val profile = ProfileManager.getProfile(
                 it.data!!.getLongExtra(ProfileSelectActivity.EXTRA_PROFILE_ID, 0)
             ) ?: return@runOnDefaultDispatcher
+            if (profile.containsByeDPI() && !profile.startsWithByeDPI()) {
+                onMainDispatcher {
+                    showInvalidProfileDialog(R.string.byedpi_front_proxy_error)
+                }
+                return@runOnDefaultDispatcher
+            }
             DataStore.frontProxy = profile.id
             onMainDispatcher {
                 frontProxyPreference.value = "3"
+                frontProxyPreference.postUpdate()
             }
         }
     }
@@ -413,9 +484,16 @@ class GroupSettingsActivity(
             val profile = ProfileManager.getProfile(
                 it.data!!.getLongExtra(ProfileSelectActivity.EXTRA_PROFILE_ID, 0)
             ) ?: return@runOnDefaultDispatcher
+            if (profile.containsByeDPI()) {
+                onMainDispatcher {
+                    showInvalidProfileDialog(R.string.byedpi_landing_proxy_error)
+                }
+                return@runOnDefaultDispatcher
+            }
             DataStore.landingProxy = profile.id
             onMainDispatcher {
                 landingProxyPreference.value = "3"
+                landingProxyPreference.postUpdate()
             }
         }
     }

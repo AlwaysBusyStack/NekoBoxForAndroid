@@ -2,7 +2,7 @@
 <resources>
     <string name="port_http">Proksi Port HTTP</string>
     <string name="port_proxy">Proksi Port SOCKS5</string>
-    <string name="group_status_proxies_subscription">%d Proksi | Diperbarui pada %s</string>
+    <string name="group_status_proxies_subscription">Diperbarui: %1$s\n%2$d Proksi</string>
     <string name="group_status_proxies">%d Proksi</string>
     <string name="protocol_param">Param Protokol</string>
     <string name="protocol">Protokol</string>

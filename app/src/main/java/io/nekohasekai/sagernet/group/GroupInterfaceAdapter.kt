@@ -35,8 +35,10 @@ class GroupInterfaceAdapter(val context: ThemedActivity) : GroupManager.Interfac
         duplicate: List<String>,
         byUser: Boolean
     ) {
+        if (!byUser) return
+
         if (changed == 0 && duplicate.isEmpty()) {
-            if (byUser) context.snackbar(
+            context.snackbar(
                     context.getString(
                             R.string.group_no_difference, group.displayName()
                     )
@@ -86,6 +88,7 @@ class GroupInterfaceAdapter(val context: ThemedActivity) : GroupManager.Interfac
             context.snackbar(message).show()
         }
     }
+
 
     override suspend fun alert(message: String) {
         return suspendCoroutine {

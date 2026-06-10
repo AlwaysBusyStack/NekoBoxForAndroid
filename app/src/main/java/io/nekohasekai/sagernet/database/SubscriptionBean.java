@@ -24,6 +24,8 @@ public class SubscriptionBean extends Serializable {
     public Integer lastUpdated;
     public Integer filterMode;
     public String filterRegex;
+    public Boolean hwidEnabled;
+    public Integer spoofApp;
 
     // SIP008
 
@@ -46,7 +48,7 @@ public class SubscriptionBean extends Serializable {
 
     @Override
     public void serializeToBuffer(ByteBufferOutput output) {
-        output.writeInt(2);
+        output.writeInt(3);
 
         output.writeInt(type);
 
@@ -65,6 +67,10 @@ public class SubscriptionBean extends Serializable {
         // v2
         output.writeInt(filterMode);
         output.writeString(filterRegex);
+
+        // v3
+        output.writeBoolean(hwidEnabled);
+        output.writeInt(spoofApp);
     }
 
     public void serializeForShare(ByteBufferOutput output) {
@@ -100,6 +106,12 @@ public class SubscriptionBean extends Serializable {
             filterMode = input.readInt();
             filterRegex = input.readString();
         }
+
+        // v3
+        if (version >= 3) {
+            hwidEnabled = input.readBoolean();
+            spoofApp = input.readInt();
+        }
     }
 
     public void deserializeFromShare(ByteBufferInput input) {
@@ -127,6 +139,8 @@ public class SubscriptionBean extends Serializable {
         if (lastUpdated == null) lastUpdated = 0;
         if (filterMode == null) filterMode = 0;
         if (filterRegex == null) filterRegex = "";
+        if (hwidEnabled == null) hwidEnabled = false;
+        if (spoofApp == null) spoofApp = 0;
 
         if (bytesUsed == null) bytesUsed = 0L;
         if (bytesRemaining == null) bytesRemaining = 0L;

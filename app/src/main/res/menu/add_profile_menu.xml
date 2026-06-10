@@ -1,11 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto">
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
     <item
         android:id="@+id/action_search"
         android:title="@android:string/search_go"
         app:actionViewClass="androidx.appcompat.widget.SearchView"
         app:showAsAction="always" />
+
+    <item
+        android:id="@+id/action_toolbar_update_subscription"
+        android:icon="@drawable/ic_baseline_update_24"
+        android:title="@string/update_current_subscription"
+        android:visible="false"
+        app:showAsAction="always"
+        tools:ignore="AlwaysShowAction" />
+
+    <item
+        android:id="@+id/action_toolbar_connection_tcp_ping"
+        android:icon="@drawable/ic_baseline_speed_24"
+        android:title="@string/connection_test_tcp_ping"
+        android:visible="false"
+        app:showAsAction="always"
+        tools:ignore="AlwaysShowAction" />
+
+    <item
+        android:id="@+id/action_toolbar_connection_url_test"
+        android:icon="@drawable/ic_baseline_shutter_speed_24"
+        android:title="@string/connection_test_url_test"
+        android:visible="false"
+        app:showAsAction="always"
+        tools:ignore="AlwaysShowAction" />
+
+    <item
+        android:id="@+id/action_toolbar_connection_test_delete_unavailable"
+        android:icon="@drawable/baseline_delete_sweep_24"
+        android:title="@string/connection_test_delete_unavailable"
+        android:visible="false"
+        app:showAsAction="always"
+        tools:ignore="AlwaysShowAction" />
 
     <item
         android:id="@+id/action_add"
@@ -64,11 +97,23 @@
                         android:id="@+id/action_new_juicity"
                         android:title="@string/action_juicity" />
                     <item
+                        android:id="@+id/action_new_trusttunnel"
+                        android:title="@string/action_trusttunnel" />
+                    <item
+                        android:id="@+id/action_new_masterdnsvpn"
+                        android:title="@string/masterdnsvpn" />
+                    <item
+                        android:id="@+id/action_new_byedpi"
+                        android:title="@string/action_byedpi" />
+                    <item
                         android:id="@+id/action_new_shadowtls"
                         android:title="@string/action_shadowtls" />
                     <item
                         android:id="@+id/action_new_anytls"
                         android:title="@string/action_anytls" />
+                    <item
+                        android:id="@+id/action_new_snell"
+                        android:title="@string/action_snell" />
                     <item
                         android:id="@+id/action_new_ssh"
                         android:title="@string/action_ssh" />
@@ -76,8 +121,14 @@
                         android:id="@+id/action_new_wg"
                         android:title="@string/action_wireguard" />
                     <item
+                        android:id="@+id/action_new_awg"
+                        android:title="@string/action_amneziawg" />
+                    <item
                         android:id="@+id/action_new_config"
                         android:title="@string/custom_config" />
+                    <item
+                        android:id="@+id/action_new_proxy_set"
+                        android:title="@string/proxy_set" />
                     <item
                         android:id="@+id/action_new_chain"
                         android:title="@string/proxy_chain" />
@@ -120,6 +171,9 @@
                 android:checked="false"
                 app:showAsAction="never" />
             <item
+                android:id="@+id/action_show_active"
+                android:title="@string/show_active" />
+            <item
                 android:id="@+id/action_order_layout"
                 android:title="@string/sort_and_layout">
                 <menu>
@@ -147,6 +201,9 @@
                         <item
                             android:id="@+id/action_layout_double"
                             android:title="@string/layout_double_column" />
+                        <item
+                            android:id="@+id/action_layout_compact"
+                            android:title="@string/layout_compact" />
                     </group>
                 </menu>
             </item>

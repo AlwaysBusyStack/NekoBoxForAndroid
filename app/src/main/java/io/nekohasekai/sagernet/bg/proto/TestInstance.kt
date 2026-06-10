@@ -1,7 +1,10 @@
 package io.nekohasekai.sagernet.bg.proto
 
+import android.os.SystemClock
 import io.nekohasekai.sagernet.BuildConfig
+import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.bg.GuardedProcessPool
+import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.ProxyEntity
 import io.nekohasekai.sagernet.fmt.buildConfig
 import io.nekohasekai.sagernet.ktx.Logs
@@ -15,6 +18,8 @@ import kotlin.coroutines.suspendCoroutine
 
 class TestInstance(profile: ProxyEntity, val link: String, private val timeout: Int) :
     BoxInstance(profile) {
+
+    private val runKey = SystemClock.elapsedRealtimeNanos().toString()
 
     suspend fun doTest(): Int {
         return suspendCoroutine { c ->
@@ -31,7 +36,7 @@ class TestInstance(profile: ProxyEntity, val link: String, private val timeout: 
                             // wait for plugin start
                             delay(500)
                         }
-                        c.tryResume(Libcore.urlTest(box, link, timeout))
+                        c.tryResume(Libcore.urlTest(box, link, timeout, DataStore.profileTestType))
                     } catch (e: Exception) {
                         c.tryResumeWithException(e)
                     }
@@ -41,13 +46,22 @@ class TestInstance(profile: ProxyEntity, val link: String, private val timeout: 
     }
 
     override fun buildConfig() {
-        config = buildConfig(profile, true)
+        config = buildConfig(profile, forTest = true, urlTestCacheKey = "${profile.id}_$runKey")
     }
 
     override suspend fun loadConfig() {
         // don't call destroyAllJsi here
         if (BuildConfig.DEBUG) Logs.d(config.config)
         box = Libcore.newSingBoxInstance(config.config, LocalResolverImpl)
+    }
+
+    override fun close() {
+        super.close()
+        SagerNet.application.cacheDir.listFiles { _, name ->
+            name.startsWith("urltest_${profile.id}_${runKey}_") && name.endsWith(".db")
+        }?.forEach {
+            runCatching { it.delete() }
+        }
     }
 
 }

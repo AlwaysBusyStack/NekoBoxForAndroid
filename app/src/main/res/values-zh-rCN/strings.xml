@@ -26,7 +26,7 @@
     <string name="group_status_empty">空</string>
     <string name="group_status_empty_subscription">从未更新</string>
     <string name="group_status_proxies">%d 个配置</string>
-    <string name="group_status_proxies_subscription">%d 个配置 | 更新于 %s</string>
+    <string name="group_status_proxies_subscription">更新：%1$s\n%2$d 个配置</string>
     <string name="group_no_difference">%s: 没有变化</string>
     <string name="group_updated">%s: 更新了 %d 个节点</string>
     <string name="group_show_diff">变化</string>
@@ -59,7 +59,7 @@
         \n直连： %3$s↑ %4$s↓</string>
     <string name="speed">%s/s</string>
     <string name="connection_test_testing">测试中…</string>
-    <string name="connection_test_available">连接成功: HTTPS 握手耗时 %dms</string>
+    <string name="connection_test_available">连接成功: HTTPS RTT %dms</string>
     <string name="connection_test_error">失败: %s</string>
     <string name="connection_test_fail">网络不可用</string>
     <string name="connection_test_error_status_code">错误代码: #%d</string>
@@ -178,6 +178,7 @@
     <string name="route_opt_bypass_lan">绕过局域网地址</string>
     <string name="route_opt_block_ads">屏蔽广告</string>
     <string name="route_opt_block_quic">屏蔽 QUIC</string>
+    <string name="route_opt_bypass_bittorrent">绕过 BitTorrent</string>
     <string name="domain_strategy">域名解析策略</string>
     <string name="traffic_sniffing">启用流量探测</string>
     <string name="disable">禁用</string>
@@ -197,6 +198,9 @@
     <string name="http_host">HTTP 主机</string>
     <string name="http_path">HTTP 路径</string>
     <string name="kcp_header_type">伪装头类型</string>
+    <string name="kcp_mtu">mKCP MTU</string>
+    <string name="kcp_tti">mKCP TTI</string>
+    <string name="kcp_cwnd_multiplier">拥塞窗口倍数</string>
     <string name="show_bottom_bar">像 SagerNet 一样显示底栏</string>
     <string name="utls_fingerprint">uTLS 指纹</string>
     <string name="grpc_service_name">gRPC 服务名称</string>
@@ -245,7 +249,7 @@
     <string name="transproxy_mode">透明代理模式</string>
     <string name="port_transproxy">透明代理端口</string>
     <string name="connection_test_url">连接测试链接</string>
-    <string name="connection_test_available_http">连接成功: HTTP 握手耗时 %dms</string>
+    <string name="connection_test_available_http">连接成功: HTTP RTT %dms</string>
     <string name="certificates">证书 (链)</string>
     <string name="bypass_lan_in_core">在核心中绕过 LAN</string>
     <string name="ignore_battery_optimizations">忽略电池优化</string>
@@ -254,6 +258,8 @@
     <string name="early_data_header_name">前置数据标头</string>
     <string name="config_settings">配置设置</string>
     <string name="custom_config">自定义配置</string>
+    <string name="certificate_authority">数字证书认证机构</string>
+    <string name="system_and_user">系统和用户</string>
     <string name="night_mode">夜间模式</string>
     <string name="enable">启用</string>
     <string name="auto">自动</string>
@@ -339,6 +345,7 @@
     <string name="service_subscription">订阅更新服务</string>
     <string name="subscription_update">订阅更新</string>
     <string name="subscription_update_message">正更新 %s …</string>
+    <string name="subscription_update_timeout">订阅更新在 %d 秒后超时</string>
     <string name="update_subscription_warning">代理未连接, 您确定要继续更新吗\?</string>
     <string name="group_filter">筛选</string>
     <string name="subscription_used">已用 %s</string>
@@ -472,8 +479,9 @@
     <string name="is_outbound_only">设置的 JSON 是出站</string>
     <string name="save">保存</string>
     <string name="set_panel_url">设置面板 URL</string>
+    <string name="webview_cleanup">Cleanup</string>
     <string name="enable_clash_api">启用 Clash API</string>
-    <string name="enable_clash_api_summary">在 127.0.0.1:9090 提供 clash api 和 yacd 仪表板</string>
+    <string name="enable_clash_api_summary">提供 Clash API 和 metacubexd 仪表板</string>
     <string name="xtls_flow">Flow（VLESS 子协议）</string>
     <string name="log_level">日志级别</string>
     <string name="ads">推广</string>
@@ -544,6 +552,7 @@
     <string name="ruleset_update_interval">RuleSet 更新间隔</string>
     <string name="ruleset_update_interval_summary">远程 RuleSet 自动更新的时间间隔。例如：1h、30m、3600s。设为 0 表示禁用自动更新</string>
     <string name="ruleset_prefix_error">Ruleset格式错误: 必须以rsip:或rssite:开头</string>
+    <string name="ruleset_not_found_error">未找到规则集: %1$s</string>
     <string name="clear_cache">清理缓存</string>
     <string name="clear_cache_summary">清理应用缓存文件，解决一些异常问题</string>
     <string name="clear_cache_confirm">确定要清理缓存吗？</string>
@@ -568,10 +577,19 @@
     <string name="xhttp_host">XHTTP 主机</string>
     <string name="xhttp_path">XHTTP 路径</string>
     <string name="xhttp_mode">XHTTP 模式</string>
+    <string name="xhttp_headers">XHTTP 标头</string>
     <string name="xhttp_extra">XHTTP Extra</string>
     <string name="xhttp_settings">XHTTP 设置</string>
     <string name="vless_encryption">加密方式</string>
     <string name="vless_encryption_hint">mlkem768x25519plus.native.0rtt.KEY1.KEY2...</string>
     <string name="app_list_permission_denied">无法读取已安装的应用。\n这通常是由于系统限制了应用的读取权限（例如某些中国厂商系统）。\n请在系统设置中授予权限。</string>
     <string name="open_app_settings">打开系统设置</string>
+    <string name="action_snell">Snell</string>
+    <string name="snell_psk">密钥</string>
+    <string name="snell_version">版本</string>
+    <string name="snell_network">协议</string>
+    <string name="snell_obfs_mode">Obfs 模式</string>
+    <string name="snell_obfs_host">Obfs 主机</string>
+    <string name="snell_reuse">Reuse</string>
+    <string name="snell_reuse_summary">v4/v5 only</string>
 </resources>

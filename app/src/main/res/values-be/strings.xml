@@ -44,8 +44,8 @@
     <string name="connection_test_error_status_code">Код памылкі: #%d</string>
     <string name="connection_test_fail">Інтэрнэт недаступны</string>
     <string name="connection_test_error">Не атрымалася: %s</string>
-    <string name="connection_test_available_http">Поспех: поціск рукі HTTP заняў %dms</string>
-    <string name="connection_test_available">Поспех: поціск рукі HTTPS заняў %dms</string>
+    <string name="connection_test_available_http">HTTP RTT: %dms</string>
+    <string name="connection_test_available">HTTPS RTT: %dms</string>
     <string name="connection_test_testing">Тэставанне…</string>
     <string name="speed">%s/s</string>
     <string name="speed_detail">Проксі : %1$s↑ %2$s↓
@@ -85,7 +85,7 @@
     <string name="group_show_diff">Розніца</string>
     <string name="group_updated">%s: Абноўлены %d проксі</string>
     <string name="group_no_difference">%s: няма розніцы</string>
-    <string name="group_status_proxies_subscription">%d проксі | Абноўлена %s</string>
+    <string name="group_status_proxies_subscription">Абноўлена: %1$s\n%2$d проксі</string>
     <string name="group_status_proxies">%d проксі</string>
     <string name="group_status_empty_subscription">Пакуль не абноўлена</string>
     <string name="group_status_empty">Пустая група</string>

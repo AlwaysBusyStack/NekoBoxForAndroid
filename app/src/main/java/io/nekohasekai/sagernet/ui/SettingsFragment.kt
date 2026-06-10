@@ -19,4 +19,9 @@ class SettingsFragment : ToolbarFragment(R.layout.layout_config_settings) {
             .commitAllowingStateLoss()
     }
 
+    fun syncServiceState() {
+        (parentFragmentManager.findFragmentById(R.id.settings) as? SettingsPreferenceFragment)
+            ?.syncServiceState()
+    }
+
 }

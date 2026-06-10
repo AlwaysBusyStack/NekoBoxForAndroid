@@ -44,7 +44,7 @@ fun Project.setupCommon() {
         buildToolsVersion = "35.0.1"
         compileSdk = 35
         defaultConfig {
-            minSdk = 21
+            minSdk = 23
             targetSdk = 35
         }
         buildTypes {
@@ -169,7 +169,7 @@ fun Project.setupApp() {
         splits.abi {
             reset()
             isEnable = true
-            isUniversalApk = false
+            isUniversalApk = true
             include("armeabi-v7a")
             include("arm64-v8a")
             include("x86")
@@ -181,6 +181,7 @@ fun Project.setupApp() {
             create("oss")
             create("fdroid")
             create("play")
+            create("plus")
             create("preview") {
                 buildConfigField(
                     "String",
@@ -193,16 +194,23 @@ fun Project.setupApp() {
         applicationVariants.all {
             outputs.all {
                 this as BaseVariantOutputImpl
+
+                var fileNamePrefix = "NekoBox-"
+                if (flavorName == "plus") {
+                    fileNamePrefix = "NekoBoxPlus-"
+                }
+
                 val isPreview = outputFileName.contains("-preview")
                 outputFileName = if (isPreview) {
                     outputFileName.replace(
                         project.name,
-                        "NekoBox-" + requireMetadata().getProperty("PRE_VERSION_NAME")
+                        fileNamePrefix + requireMetadata().getProperty("PRE_VERSION_NAME")
                     ).replace("-preview", "")
                 } else {
-                    outputFileName.replace(project.name, "NekoBox-$versionName")
+                    outputFileName.replace(project.name, "$fileNamePrefix$versionName")
                         .replace("-release", "")
                         .replace("-oss", "")
+                        .replace("-plus-", "-")
                 }
             }
         }

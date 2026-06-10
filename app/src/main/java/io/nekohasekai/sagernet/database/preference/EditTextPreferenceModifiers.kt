@@ -2,6 +2,7 @@ package io.nekohasekai.sagernet.database.preference
 
 import android.graphics.Typeface
 import android.text.InputFilter
+import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import androidx.preference.EditTextPreference
@@ -37,6 +38,23 @@ object EditTextPreferenceModifiers {
         override fun onBindEditText(editText: EditText) {
             editText.inputType = EditorInfo.TYPE_CLASS_NUMBER
             editText.setSingleLine()
+            editText.setSelection(editText.text.length)
+        }
+    }
+
+    object Decimal : EditTextPreference.OnBindEditTextListener {
+        override fun onBindEditText(editText: EditText) {
+            editText.inputType = InputType.TYPE_CLASS_NUMBER or
+                InputType.TYPE_NUMBER_FLAG_DECIMAL
+            editText.setSingleLine()
+            editText.setSelection(editText.text.length)
+        }
+    }
+
+    object Multiline : EditTextPreference.OnBindEditTextListener {
+        override fun onBindEditText(editText: EditText) {
+            editText.inputType =
+                EditorInfo.TYPE_CLASS_TEXT or EditorInfo.TYPE_TEXT_FLAG_MULTI_LINE
             editText.setSelection(editText.text.length)
         }
     }

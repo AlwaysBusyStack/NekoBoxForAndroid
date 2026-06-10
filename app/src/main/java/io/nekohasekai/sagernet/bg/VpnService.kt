@@ -1,6 +1,5 @@
 package io.nekohasekai.sagernet.bg
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Intent
@@ -11,6 +10,7 @@ import android.os.ParcelFileDescriptor
 import android.os.PowerManager
 import io.nekohasekai.sagernet.*
 import io.nekohasekai.sagernet.database.DataStore
+import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.fmt.LOCALHOST
 import io.nekohasekai.sagernet.fmt.hysteria.HysteriaBean
 import io.nekohasekai.sagernet.ktx.*
@@ -52,9 +52,9 @@ class VpnService : BaseVpnService(),
 
     @Suppress("EXPERIMENTAL_API_USAGE")
     override fun killProcesses() {
+        super.killProcesses()
         conn?.close()
         conn = null
-        super.killProcesses()
     }
 
     override fun onBind(intent: Intent) = when (intent.action) {
@@ -135,21 +135,33 @@ class VpnService : BaseVpnService(),
             it[0].hysteriaBean?.protocol == HysteriaBean.PROTOCOL_FAKETCP
         }
 
+        // List of all per-rule packages where outbound is not Bypass.
+        // This adds those packages to the TUN package list and enables user-defined rules for them.
+        // We don't mess with bypass since we can't guarantee that the rule will match because
+        // runtime changes like network change may have an effect on that.
+        val packagesFromRules: List<String> = SagerDatabase.rulesDao.enabledRules()
+            .flatMap { rule ->
+                if (rule.packages.isNotEmpty() && rule.outbound != -1L)
+                    rule.packages
+                else
+                    emptySet()
+            }
+            .filter { it.isNotBlank() }
+
         if (proxyApps || needBypassRootUid) {
             val individual = mutableSetOf<String>()
             val allApps by lazy {
-                packageManager.getInstalledPackages(PackageManager.GET_PERMISSIONS).filter {
-                    when (it.packageName) {
-                        packageName -> false
-                        "android" -> true
-                        else -> it.requestedPermissions?.contains(Manifest.permission.INTERNET) == true
-                    }
-                }.map {
-                    it.packageName
-                }
+                packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+                    .map { it.packageName }
+                    .filter { it != packageName }
             }
             if (proxyApps) {
                 individual.addAll(DataStore.individual.split('\n').filter { it.isNotBlank() })
+
+                if (!bypass) {
+                    individual.addAll(packagesFromRules)
+                }
+
                 if (bypass && needBypassRootUid) {
                     val individualNew = allApps.toMutableList()
                     individualNew.removeAll(individual)
@@ -188,7 +200,7 @@ class VpnService : BaseVpnService(),
             }
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && DataStore.appendHttpProxy) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && DataStore.appendHttpProxy && DataStore.requireProxyInVPN) {
             builder.setHttpProxy(ProxyInfo.buildDirectProxy(LOCALHOST, DataStore.mixedPort))
         }
 

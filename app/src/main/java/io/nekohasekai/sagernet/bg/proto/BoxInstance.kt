@@ -12,8 +12,6 @@ import io.nekohasekai.sagernet.fmt.hysteria.HysteriaBean
 import io.nekohasekai.sagernet.fmt.hysteria.buildHysteria1Config
 import io.nekohasekai.sagernet.fmt.mieru.MieruBean
 import io.nekohasekai.sagernet.fmt.mieru.buildMieruConfig
-import io.nekohasekai.sagernet.fmt.naive.NaiveBean
-import io.nekohasekai.sagernet.fmt.naive.buildNaiveConfig
 import io.nekohasekai.sagernet.fmt.trojan_go.TrojanGoBean
 import io.nekohasekai.sagernet.fmt.trojan_go.buildTrojanGoConfig
 import io.nekohasekai.sagernet.ktx.*
@@ -65,11 +63,6 @@ abstract class BoxInstance(
                     is MieruBean -> {
                         initPlugin("mieru-plugin")
                         pluginConfigs[port] = profile.type to bean.buildMieruConfig(port)
-                    }
-
-                    is NaiveBean -> {
-                        initPlugin("naive-plugin")
-                        pluginConfigs[port] = profile.type to bean.buildNaiveConfig(port)
                     }
 
                     is HysteriaBean -> {
@@ -140,36 +133,6 @@ abstract class BoxInstance(
                         processes.start(commands, envMap)
                     }
 
-                    bean is NaiveBean -> {
-                        val configFile = File(
-                            cacheDir, "naive_" + SystemClock.elapsedRealtime() + ".json"
-                        )
-
-                        configFile.parentFile?.mkdirs()
-                        configFile.writeText(config)
-                        cacheFiles.add(configFile)
-
-                        val envMap = mutableMapOf<String, String>()
-
-                        if (bean.certificates.isNotBlank()) {
-                            val certFile = File(
-                                cacheDir, "naive_" + SystemClock.elapsedRealtime() + ".crt"
-                            )
-
-                            certFile.parentFile?.mkdirs()
-                            certFile.writeText(bean.certificates)
-                            cacheFiles.add(certFile)
-
-                            envMap["SSL_CERT_FILE"] = certFile.absolutePath
-                        }
-
-                        val commands = mutableListOf(
-                            initPlugin("naive-plugin").path, configFile.absolutePath
-                        )
-
-                        processes.start(commands, envMap)
-                    }
-
                     bean is HysteriaBean -> {
                         val configFile = File(
                             cacheDir, "hysteria_" + SystemClock.elapsedRealtime() + ".json"
@@ -215,7 +178,20 @@ abstract class BoxInstance(
         if (::processes.isInitialized) processes.close(GlobalScope + Dispatchers.IO)
 
         if (::box.isInitialized) {
-            box.close()
+            try {
+                box.closeTimeout(10_000L)
+            } catch (e: Exception) {
+                Logs.w(e)
+                if (
+                    SagerNet.application.isBgProcess &&
+                    e.readableMessage.contains("sing-box did not close in time")
+                ) {
+                    runOnDefaultDispatcher {
+                        delay(500L)
+                        android.os.Process.killProcess(android.os.Process.myPid())
+                    }
+                }
+            }
         }
     }
 

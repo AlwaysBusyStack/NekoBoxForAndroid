@@ -70,6 +70,12 @@ public class MieruBean extends AbstractBean {
 
     @NotNull
     @Override
+    public String getHash() {
+        return buildTypedHash("mieru");
+    }
+
+    @NotNull
+    @Override
     public MieruBean clone() {
         return KryoConverters.deserialize(new MieruBean(), KryoConverters.serialize(this));
     }

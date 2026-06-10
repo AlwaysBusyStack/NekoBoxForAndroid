@@ -77,6 +77,12 @@ public class NaiveBean extends AbstractBean {
 
     @NotNull
     @Override
+    public String getHash() {
+        return buildTypedHash("naive");
+    }
+
+    @NotNull
+    @Override
     public NaiveBean clone() {
         return KryoConverters.deserialize(new NaiveBean(), KryoConverters.serialize(this));
     }

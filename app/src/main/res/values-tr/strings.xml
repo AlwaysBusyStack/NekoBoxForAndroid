@@ -14,8 +14,8 @@
     <string name="connection_test_error_status_code">Hata kodu: #%d</string>
     <string name="connection_test_fail">Internet Bağlantısı Yok</string>
     <string name="connection_test_error">Başarısız: %s</string>
-    <string name="connection_test_available_http">Başarılı: HTTP el sıkışması %dms sonra gerçekleşti</string>
-    <string name="connection_test_available">Başarılı: HTTPS el sıkışması %dms sonra gerçekleşti</string>
+    <string name="connection_test_available_http">HTTP RTT: %dms</string>
+    <string name="connection_test_available">HTTPS RTT: %dms</string>
     <string name="connection_test_testing">Test ediliyor…</string>
     <string name="speed">%s/s</string>
     <string name="speed_detail">Vekil Sunucu： %1$s↑ %2$s↓
@@ -57,7 +57,7 @@
     <string name="group_show_diff">Fark</string>
     <string name="group_updated">%s: %d vekil sunucu güncellendi</string>
     <string name="group_no_difference">%s: Farklılık yok</string>
-    <string name="group_status_proxies_subscription">%d Vekil Sunucu | %s güncellendi</string>
+    <string name="group_status_proxies_subscription">Güncellendi: %1$s\n%2$d Vekil Sunucu</string>
     <string name="group_status_proxies">%d Vekil Sunucu</string>
     <string name="group_status_empty_subscription">Henüz güncellenmedi</string>
     <string name="group_status_empty">Boş grup</string>
@@ -189,6 +189,7 @@
     <string name="subscription_used">%s Kullanıldı</string>
     <string name="group_filter">Filtre</string>
     <string name="subscription_update_message">%s güncelleniyor …</string>
+    <string name="subscription_update_timeout">Abonelik güncellemesi %d saniye sonra zaman aşımına uğradı</string>
     <string name="subscription_update">Abonelik Güncellemesi</string>
     <string name="service_subscription">Abonelik Güncelleme Servisi</string>
     <string name="ooc_missing_protocol">Bu abonelik %s protokolü için destek gerektirir ama bulunamıyor. Desteklenmeyen profiller görmezden gelinir.</string>

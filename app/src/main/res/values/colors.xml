@@ -25,7 +25,23 @@
         <item>@color/material_grey_500</item>
         <item>@color/material_blue_grey_500</item>
         <item>@color/material_light_black</item>
+        <item>@color/color_amoled_black</item>
     </integer-array>
+
+    <color name="custom_theme_primary">#F06292</color>
+    <color name="custom_theme_on_primary">#FFFFFF</color>
+    <color name="custom_theme_primary_container">#FFD8E6</color>
+    <color name="custom_theme_on_primary_container">#32101D</color>
+    <color name="custom_theme_secondary">#765864</color>
+    <color name="custom_theme_on_secondary">#FFFFFF</color>
+    <color name="custom_theme_secondary_container">#FFD8E6</color>
+    <color name="custom_theme_on_secondary_container">#2C151F</color>
+    <color name="custom_theme_surface">#FFFBFF</color>
+    <color name="custom_theme_on_surface">#1D1B20</color>
+    <color name="custom_theme_surface_variant">#EEE0E7</color>
+    <color name="custom_theme_on_surface_variant">#4D444B</color>
+    <color name="custom_theme_surface_container">#F3EDF1</color>
+    <color name="custom_theme_surface_container_high">#ECE6EA</color>
 
     <color name="material_amber_100">#FFECB3</color>
     <color name="material_amber_200">#FFE082</color>
@@ -288,6 +304,17 @@
     <color name="color_ng_black_accent">#9E9E9E</color>
     <color name="color_ng_black_primary">#2B2B2B</color>
 
+    <color name="color_amoled_black">#000000</color>
+    <color name="color_amoled_accent">#99c1f1</color>
+    <color name="color_amoled_surface">#000000</color>
+
     <color name="preference_simple_menu_background">#FAFAFA</color>
+
+    <color name="theme_surface">#FFF8F8</color>
+    <color name="theme_on_surface">#21191C</color>
+    <color name="theme_surface_variant">#F2DDE4</color>
+    <color name="theme_on_surface_variant">#504349</color>
+    <color name="theme_surface_container">#F8ECEF</color>
+    <color name="theme_surface_container_high">#F2E6EA</color>
 
 </resources>

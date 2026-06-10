@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">NekoBox</string>
-    <string name="app_name_long" translatable="false">NekoBox for Android</string>
+    <string name="app_name" translatable="false">NekoBox+</string>
+    <string name="app_name_long" translatable="false">NekoBox+ for Android</string>
     <string name="app_desc">مجموعه ابزار جامع پراکسی برای اندروید، نوشته‌شده با کاتلین.</string>
     <string name="project">پروژه</string>
     <string name="github">کد منبع</string>
@@ -38,7 +38,7 @@
     <string name="group_status_empty">خالی</string>
     <string name="group_status_empty_subscription">هنوز به‌روزرسانی نشده است</string>
     <string name="group_status_proxies">%d پراکسی‌ها</string>
-    <string name="group_status_proxies_subscription">%d پراکسی‌ها | به‌روزرسانی شدند در %s</string>
+    <string name="group_status_proxies_subscription">به‌روزرسانی: %1$s\n%2$d پراکسی</string>
     <string name="group_no_difference">%s: بدون تفاوت</string>
     <string name="group_updated">%s: Updated %d proxies</string>
     <string name="group_show_diff">تفاوت‌ها</string>
@@ -160,6 +160,7 @@
     <string name="route_opt_block_ads">مسدود کردن تبلیغات</string>
     <string name="route_opt_block_analysis">مسدود کردن ردیاب‌های اینترنتی</string>
     <string name="route_opt_block_quic">مسدود کردن QUIC</string>
+    <string name="route_opt_bypass_bittorrent">دور زدن بیت‌تورنت</string>
     <string name="domain_strategy">راهبرد شناسایی دامنه</string>
     <string name="traffic_sniffing">فعال کردن ثبت ترافیک</string>
     <string name="enable_mux">فعال کردن مالتی‌پلکسر</string>
@@ -361,6 +362,7 @@
     <string name="service_subscription">سرویس به‌روزسانی اشتراک</string>
     <string name="subscription_update">به‌روزرسانی اشتراک</string>
     <string name="subscription_update_message">به‌روزرسانی %s …</string>
+    <string name="subscription_update_timeout">زمان به‌روزرسانی اشتراک پس از %d ثانیه به پایان رسید</string>
     <string name="group_filter">پالایش</string>
     <string name="subscription_used">%s استفاده‌شده</string>
     <string name="subscription_traffic">%s استفاده‌شده / %s باقی‌مانده</string>
@@ -493,9 +495,10 @@
     <string name="is_outbound_only">مجموعه JSON برای خروجی است</string>
     <string name="save">ذخیره</string>
     <string name="set_panel_url">تعیین لینک صفحه</string>
+    <string name="webview_cleanup">Cleanup</string>
     <string name="enable_clash_api">فعال کردن Clash API</string>
     <string name="log_level">سطح ثبت آمار</string>
-    <string name="enable_clash_api_summary">ارائه Clash api و صفحه yacd را در 127.0.0.1: 9090</string>
+    <string name="enable_clash_api_summary">ارائه Clash API و داشبورد metacubexd</string>
     <string name="xtls_flow">Flow (VLESS دستورالعمل فرعی)</string>
     <string name="ads">تبلیغات</string>
     <string name="bypass_lan_in_core">دورزدن شبکه محلی در هسته برنامه</string>

@@ -17,9 +17,10 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/anytls"
+	"github.com/sagernet/sing-box/protocol/awg"
 	"github.com/sagernet/sing-box/protocol/block"
 	"github.com/sagernet/sing-box/protocol/direct"
-	protocolDns "github.com/sagernet/sing-box/protocol/dns"
+	"github.com/sagernet/sing-box/protocol/fragmentexclave"
 	"github.com/sagernet/sing-box/protocol/group"
 	"github.com/sagernet/sing-box/protocol/http"
 	"github.com/sagernet/sing-box/protocol/hysteria"
@@ -29,6 +30,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/shadowsocks"
 	"github.com/sagernet/sing-box/protocol/shadowsocksr"
 	"github.com/sagernet/sing-box/protocol/shadowtls"
+	snellprotocol "github.com/sagernet/sing-box/protocol/snell"
 	"github.com/sagernet/sing-box/protocol/socks"
 	"github.com/sagernet/sing-box/protocol/ssh"
 	"github.com/sagernet/sing-box/protocol/tor"
@@ -39,7 +41,10 @@ import (
 	"github.com/sagernet/sing-box/protocol/vmess"
 	"github.com/sagernet/sing-box/protocol/wireguard"
 
+	"libcore/protocol/byedpi"
 	"libcore/protocol/juicity"
+	"libcore/protocol/masterdnsvpn"
+	"libcore/protocol/trusttunnel"
 
 	_ "github.com/sagernet/sing-box/experimental/clashapi"
 	_ "github.com/sagernet/sing-box/transport/v2rayquic"
@@ -64,9 +69,9 @@ func nekoboxAndroidOutboundRegistry() *outbound.Registry {
 	registry := outbound.NewRegistry()
 
 	direct.RegisterOutbound(registry)
+	fragmentexclave.RegisterOutbound(registry)
 
 	block.RegisterOutbound(registry)
-	protocolDns.RegisterOutbound(registry)
 
 	group.RegisterSelector(registry)
 	group.RegisterURLTest(registry)
@@ -82,13 +87,18 @@ func nekoboxAndroidOutboundRegistry() *outbound.Registry {
 	shadowtls.RegisterOutbound(registry)
 	vless.RegisterOutbound(registry)
 	anytls.RegisterOutbound(registry)
+	snellprotocol.RegisterOutbound(registry)
 
 	hysteria.RegisterOutbound(registry)
 	tuic.RegisterOutbound(registry)
 	hysteria2.RegisterOutbound(registry)
+	byedpi.RegisterOutbound(registry)
 	juicity.RegisterOutbound(registry)
+	masterdnsvpn.RegisterOutbound(registry)
+	trusttunnel.RegisterOutbound(registry)
+	registerNaiveOutbound(registry)
 
-	wireguard.RegisterOutbound(registry)
+	awg.RegisterOutbound(registry)
 
 	return registry
 }
@@ -97,6 +107,7 @@ func nekoboxAndroidEndpointRegistry() *endpoint.Registry {
 	registry := endpoint.NewRegistry()
 
 	wireguard.RegisterEndpoint(registry)
+	awg.RegisterEndpoint(registry)
 
 	return registry
 }

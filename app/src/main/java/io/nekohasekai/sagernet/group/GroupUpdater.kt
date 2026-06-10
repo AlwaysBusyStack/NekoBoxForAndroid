@@ -18,6 +18,7 @@ import kotlinx.coroutines.*
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.util.*
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 @Suppress("EXPERIMENTAL_API_USAGE")
@@ -123,6 +124,7 @@ abstract class GroupUpdater {
 
         val updating = Collections.synchronizedSet<Long>(mutableSetOf())
         val progress = Collections.synchronizedMap<Long, Progress>(mutableMapOf())
+        const val SUBSCRIPTION_UPDATE_TIMEOUT_MILLIS = 2 * 60 * 1000L
 
         fun startUpdate(proxyGroup: ProxyGroup, byUser: Boolean) {
             runOnDefaultDispatcher {
@@ -132,29 +134,44 @@ abstract class GroupUpdater {
 
         suspend fun executeUpdate(proxyGroup: ProxyGroup, byUser: Boolean): Boolean {
             return coroutineScope {
-                if (!updating.add(proxyGroup.id)) cancel()
+                if (!updating.add(proxyGroup.id)) return@coroutineScope false
                 GroupManager.postReload(proxyGroup.id)
 
                 val subscription = proxyGroup.subscription!!
                 val connected = DataStore.serviceState.connected
                 val userInterface = GroupManager.userInterface
 
-                if (byUser && (subscription.link?.startsWith("http://") == true || subscription.updateWhenConnectedOnly) && !connected) {
-                    if (userInterface == null || !userInterface.confirm(app.getString(R.string.update_subscription_warning))) {
-                        finishUpdate(proxyGroup)
-                        cancel()
-                        return@coroutineScope true
-                    }
-                }
-
                 try {
-                    RawUpdater.doUpdate(proxyGroup, subscription, userInterface, byUser)
-                    true
-                } catch (e: Throwable) {
-                    Logs.w(e)
-                    userInterface?.onUpdateFailure(proxyGroup, e.readableMessage)
+                    if (byUser && (subscription.link?.startsWith("http://") == true || subscription.updateWhenConnectedOnly) && !connected) {
+                        if (userInterface == null || !userInterface.confirm(app.getString(R.string.update_subscription_warning))) {
+                            return@coroutineScope true
+                        }
+                    }
+
+                    try {
+                        withTimeout(SUBSCRIPTION_UPDATE_TIMEOUT_MILLIS) {
+                            RawUpdater.doUpdate(proxyGroup, subscription, userInterface, byUser)
+                        }
+                        true
+                    } catch (e: TimeoutCancellationException) {
+                        Logs.w(e)
+                        userInterface?.onUpdateFailure(
+                            proxyGroup,
+                            app.getString(
+                                R.string.subscription_update_timeout,
+                                TimeUnit.MILLISECONDS.toSeconds(SUBSCRIPTION_UPDATE_TIMEOUT_MILLIS)
+                            )
+                        )
+                        false
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        Logs.w(e)
+                        userInterface?.onUpdateFailure(proxyGroup, e.readableMessage)
+                        false
+                    }
+                } finally {
                     finishUpdate(proxyGroup)
-                    false
                 }
             }
         }

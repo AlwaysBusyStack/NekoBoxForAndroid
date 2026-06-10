@@ -20,6 +20,7 @@ import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.readableMessage
 import io.nekohasekai.sagernet.ui.MainActivity
+import io.nekohasekai.sagernet.utils.Theme
 import java.nio.charset.StandardCharsets
 import kotlin.math.roundToInt
 
@@ -35,6 +36,11 @@ class QRCodeDialog() : DialogFragment() {
         arguments = bundleOf(
             Pair(KEY_URL, url), Pair(KEY_NAME, displayName)
         )
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setStyle(STYLE_NORMAL, Theme.getDialogTheme())
     }
 
     /**

@@ -26,4 +26,14 @@ class FabProgressBehavior(context: Context, attrs: AttributeSet?) :
             true
         } else false
     }
+
+    override fun onDependentViewChanged(
+        parent: CoordinatorLayout,
+        child: CircularProgressIndicator,
+        dependency: View,
+    ): Boolean {
+        child.translationX = dependency.translationX
+        child.translationY = dependency.translationY
+        return true
+    }
 }

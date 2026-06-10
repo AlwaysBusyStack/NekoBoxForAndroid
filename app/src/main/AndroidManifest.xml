@@ -11,8 +11,13 @@
 
     <uses-permission android:name="${applicationId}.SERVICE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -73,6 +78,13 @@
             android:configChanges="uiMode" />
 
         <activity
+            android:name="io.nekohasekai.sagernet.ui.ConnectionTestNotificationActionActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <activity
             android:name="io.nekohasekai.sagernet.ui.MainActivity"
             android:configChanges="uiMode"
             android:exported="true"
@@ -126,14 +138,24 @@
                 <data android:scheme="ssr" />
                 <data android:scheme="socks" />
                 <data android:scheme="socks4" />
-                <data android:scheme="socksa" />
-                <data android:scheme="sock5" />
+                <data android:scheme="socks4a" />
+                <data android:scheme="socks5" />
                 <data android:scheme="vmess" />
+                <data android:scheme="vless" />
                 <data android:scheme="trojan" />
                 <data android:scheme="trojan-go" />
+                <data android:scheme="snell" />
                 <data android:scheme="naive+https" />
                 <data android:scheme="naive+quic" />
                 <data android:scheme="hysteria" />
+                <data android:scheme="hysteria2" />
+                <data android:scheme="hy2" />
+                <data android:scheme="tuic" />
+                <data android:scheme="juicity" />
+                <data android:scheme="tt" />
+                <data android:scheme="anytls" />
+                <data android:scheme="stormdns" />
+                <data android:scheme="vpn" />
 
             </intent-filter>
 
@@ -185,13 +207,31 @@
             android:name="io.nekohasekai.sagernet.ui.profile.WireGuardSettingsActivity"
             android:configChanges="uiMode" />
         <activity
+            android:name="io.nekohasekai.sagernet.ui.profile.AmneziaWGSettingsActivity"
+            android:configChanges="uiMode" />
+        <activity
             android:name="io.nekohasekai.sagernet.ui.profile.TuicSettingsActivity"
             android:configChanges="uiMode" />
         <activity
             android:name="io.nekohasekai.sagernet.ui.profile.JuicitySettingsActivity"
             android:configChanges="uiMode" />
         <activity
+            android:name="io.nekohasekai.sagernet.ui.profile.TrustTunnelSettingsActivity"
+            android:configChanges="uiMode" />
+        <activity
+            android:name="io.nekohasekai.sagernet.ui.profile.SnellSettingsActivity"
+            android:configChanges="uiMode" />
+        <activity
+            android:name="io.nekohasekai.sagernet.ui.profile.MasterDnsVPNSettingsActivity"
+            android:configChanges="uiMode" />
+        <activity
             android:name="io.nekohasekai.sagernet.ui.profile.ChainSettingsActivity"
+            android:configChanges="uiMode" />
+        <activity
+            android:name="io.nekohasekai.sagernet.ui.profile.ProxySetSettingsActivity"
+            android:configChanges="uiMode" />
+        <activity
+            android:name="moe.matsuri.nb4a.proxy.byedpi.ByeDPISettingsActivity"
             android:configChanges="uiMode" />
         <activity
             android:name="moe.matsuri.nb4a.proxy.shadowtls.ShadowTLSSettingsActivity"
@@ -287,14 +327,14 @@
         <service
             android:name="io.nekohasekai.sagernet.bg.ProxyService"
             android:exported="false"
-            android:foregroundServiceType="systemExempted"
+            android:foregroundServiceType="systemExempted|location"
             android:process=":bg"
             tools:ignore="ForegroundServicePermission" />
 
         <service
             android:name="io.nekohasekai.sagernet.bg.VpnService"
             android:exported="false"
-            android:foregroundServiceType="systemExempted"
+            android:foregroundServiceType="systemExempted|location"
             android:label="@string/app_name"
             android:permission="android.permission.BIND_VPN_SERVICE"
             android:process=":bg"

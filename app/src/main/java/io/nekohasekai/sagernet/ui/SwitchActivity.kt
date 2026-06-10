@@ -1,6 +1,7 @@
 package io.nekohasekai.sagernet.ui
 
 import android.os.Bundle
+import android.view.ViewGroup
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.database.DataStore
@@ -21,6 +22,11 @@ class SwitchActivity : ThemedActivity(R.layout.layout_empty),
                 ConfigurationFragment(true, null, R.string.action_switch)
             )
             .commitAllowingStateLoss()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     override fun returnProfile(profileId: Long) {

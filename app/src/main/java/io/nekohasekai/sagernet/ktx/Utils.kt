@@ -284,9 +284,13 @@ fun Context.getColour(@ColorRes colorRes: Int): Int {
 }
 
 fun Context.getColorAttr(@AttrRes resId: Int): Int {
-    return ContextCompat.getColor(this, TypedValue().also {
-        theme.resolveAttribute(resId, it, true)
-    }.resourceId)
+    val typedValue = TypedValue()
+    if (!theme.resolveAttribute(resId, typedValue, true)) throw Resources.NotFoundException()
+    return when {
+        typedValue.resourceId != 0 -> ContextCompat.getColor(this, typedValue.resourceId)
+        typedValue.type in TypedValue.TYPE_FIRST_COLOR_INT..TypedValue.TYPE_LAST_COLOR_INT -> typedValue.data
+        else -> throw Resources.NotFoundException()
+    }
 }
 
 val isExpert: Boolean by lazy { BuildConfig.DEBUG || DataStore.isExpert }

@@ -1,40 +1,73 @@
 package io.nekohasekai.sagernet.ui
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ShortcutManager
+import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.util.Log
+import android.util.Size
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.core.net.toUri
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.DecodeHintType
+import com.google.zxing.InvertedLuminanceSource
+import com.google.zxing.LuminanceSource
+import com.google.zxing.PlanarYUVLuminanceSource
+import com.google.zxing.RGBLuminanceSource
 import com.google.zxing.Result
-import com.king.zxing.CameraScan
-import com.king.zxing.DefaultCameraScan
-import com.king.zxing.analyze.QRCodeAnalyzer
-import com.king.zxing.util.CodeUtils
-import com.king.zxing.util.LogUtils
-import com.king.zxing.util.PermissionUtils
+import com.google.zxing.common.HybridBinarizer
+import com.google.zxing.multi.GenericMultipleBarcodeReader
+import com.google.zxing.multi.qrcode.QRCodeMultiReader
+import com.google.zxing.qrcode.QRCodeReader
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.ProfileManager
 import io.nekohasekai.sagernet.databinding.LayoutScannerBinding
 import io.nekohasekai.sagernet.group.RawUpdater
 import io.nekohasekai.sagernet.ktx.*
+import java.nio.ByteBuffer
+import java.util.EnumSet
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 
-class ScannerActivity : ThemedActivity(),
-    CameraScan.OnScanResultCallback {
+class ScannerActivity : ThemedActivity() {
+
+    companion object {
+        private const val TAG = "ScannerActivity"
+        const val EXTRA_RETURN_SCAN_TEXT = "returnScanText"
+        const val EXTRA_SCAN_TEXT = "scanText"
+    }
 
     lateinit var binding: LayoutScannerBinding
-    lateinit var cameraScan: CameraScan
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var camera: Camera? = null
+    private var analyzingImage = AtomicBoolean(false)
+    private val analyzerExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val checkedNonAmneziaBarcodes = hashSetOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,8 +81,6 @@ class ScannerActivity : ThemedActivity(),
             setHomeAsUpIndicator(R.drawable.ic_navigation_close)
         }
 
-        // 二维码库
-        initCameraScan()
         startCamera()
         binding.ivFlashlight.setOnClickListener { toggleTorchState() }
     }
@@ -77,9 +108,8 @@ class ScannerActivity : ThemedActivity(),
                             contentResolver, uri
                         )
                     }
-                    val result = CodeUtils.parseCodeResult(bitmap)
                     onMainDispatcher {
-                        onScanResultCallback(result, true)
+                        decodeQrCodesFromBitmap(bitmap).forEach { code -> onScanText(code, true) }
                     }
                 }
                 finish()
@@ -109,22 +139,40 @@ class ScannerActivity : ThemedActivity(),
      * @param result 扫码结果
      * @return 返回true表示拦截，将不自动执行后续逻辑，为false表示不拦截，默认不拦截
      */
-    override fun onScanResultCallback(result: Result?): Boolean {
-        return onScanResultCallback(result, false)
-    }
+    fun onScanText(result: String?, multi: Boolean): Boolean {
+        if (!multi && finished.get()) return true
 
-    fun onScanResultCallback(result: Result?, multi: Boolean): Boolean {
-        if (!multi && finished.getAndSet(true)) return true
-        if (!multi) finish()
+        val text = try {
+            result ?: throw Exception("QR code not found")
+        } catch (e: Throwable) {
+            if (!multi) {
+                finished.set(true)
+                finish()
+            }
+            Toast.makeText(app, e.readableMessage, Toast.LENGTH_SHORT).show()
+            return true
+        }
+
+        if (!multi) {
+            finished.set(true)
+        }
+        if (intent.getBooleanExtra(EXTRA_RETURN_SCAN_TEXT, false)) {
+            setResult(Activity.RESULT_OK, Intent().putExtra(EXTRA_SCAN_TEXT, text))
+            finish()
+            return true
+        }
         runOnDefaultDispatcher {
             try {
-                val text = result?.text ?: throw Exception("QR code not found")
-                val results = RawUpdater.parseRaw(text)
+                val results = when {
+                    text.startsWith("vpn://") -> parseAmneziaVpnLink(text)
+                    else -> RawUpdater.parseRaw(text)
+                }
                 if (!results.isNullOrEmpty()) {
                     val currentGroupId = DataStore.selectedGroupForImport()
                     if (DataStore.selectedGroup != currentGroupId) {
                         DataStore.selectedGroup = currentGroupId
                     }
+                    DataStore.editingGroup = currentGroupId
 
                     for (profile in results) {
                         ProfileManager.createProfile(currentGroupId, profile)
@@ -140,6 +188,10 @@ class ScannerActivity : ThemedActivity(),
                     action = Intent.ACTION_VIEW
                     data = e.link.toUri()
                 })
+            } catch (e: AmneziaApiKeyUnsupportedException) {
+                onMainDispatcher {
+                    Toast.makeText(app, R.string.amnezia_api_key_unsupported, Toast.LENGTH_LONG).show()
+                }
             } catch (e: Throwable) {
                 Logs.w(e)
                 onMainDispatcher {
@@ -147,48 +199,293 @@ class ScannerActivity : ThemedActivity(),
                     text += "\n" + e.readableMessage
                     Toast.makeText(app, text, Toast.LENGTH_SHORT).show()
                 }
+            } finally {
+                if (!multi) {
+                    onMainDispatcher {
+                        finish()
+                    }
+                }
             }
         }
         return true
     }
 
     /**
-     * 初始化CameraScan
-     */
-    fun initCameraScan() {
-        cameraScan = DefaultCameraScan(this, binding.previewView)
-        cameraScan.setAnalyzer(QRCodeAnalyzer())
-        cameraScan.setOnScanResultCallback(this)
-        cameraScan.setNeedAutoZoom(true)
-    }
-
-    /**
      * 启动相机预览
      */
     fun startCamera() {
-        if (PermissionUtils.checkPermission(this, Manifest.permission.CAMERA)) {
-            cameraScan.startCamera()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            startCameraX()
         } else {
-            LogUtils.d("checkPermissionResult != PERMISSION_GRANTED")
-            PermissionUtils.requestPermission(
-                this, Manifest.permission.CAMERA, CAMERA_PERMISSION_REQUEST_CODE
-            )
+            Log.d(TAG, "checkPermissionResult != PERMISSION_GRANTED")
+            requestPermissions(arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST_CODE)
         }
+    }
+
+    private fun startCameraX() {
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+        cameraProviderFuture.addListener({
+            try {
+                val provider = cameraProviderFuture.get()
+                cameraProvider = provider
+                provider.unbindAll()
+
+                val preview = Preview.Builder().build().also {
+                    it.setSurfaceProvider(binding.previewView.surfaceProvider)
+                }
+                val imageAnalysis = ImageAnalysis.Builder()
+                    .setResolutionSelector(
+                        ResolutionSelector.Builder()
+                            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
+                            .setResolutionStrategy(
+                                ResolutionStrategy(
+                                    Size(1920, 1080),
+                                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                                )
+                            )
+                            .build()
+                    )
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+                imageAnalysis.setAnalyzer(analyzerExecutor) { imageProxy ->
+                    if (finished.get() || !analyzingImage.compareAndSet(false, true)) {
+                        imageProxy.close()
+                        return@setAnalyzer
+                    }
+
+                    if (imageProxy.image == null) {
+                        analyzingImage.set(false)
+                        imageProxy.close()
+                        return@setAnalyzer
+                    }
+
+                    try {
+                        val codes = decodeQrCodesFromImageProxy(imageProxy)
+                        if (codes.isNotEmpty()) {
+                            runOnUiThread {
+                                processLiveQrCodes(codes)
+                            }
+                        }
+                    } finally {
+                        analyzingImage.set(false)
+                        imageProxy.close()
+                    }
+                }
+                camera = provider.bindToLifecycle(
+                    this,
+                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    preview,
+                    imageAnalysis,
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Unable to start CameraX scanner", e)
+                Toast.makeText(app, e.readableMessage, Toast.LENGTH_SHORT).show()
+                finish()
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun processLiveQrCodes(codes: List<String>) {
+        if (finished.get()) return
+        codes.forEach { code ->
+            if (finished.get()) return@forEach
+            if (code.isNotEmpty()) {
+                if (checkedNonAmneziaBarcodes.add(code)) {
+                    Log.d(TAG, "ZXing accepted QR payload")
+                    onScanText(code, false)
+                }
+            }
+        }
+    }
+
+    private fun decodeQrCodesFromImageProxy(imageProxy: ImageProxy): List<String> {
+        val image = imageProxy.image ?: return emptyList()
+        val yPlane = image.planes[0]
+        val compactY = compactYPlane(
+            yPlane.buffer,
+            yPlane.rowStride,
+            yPlane.pixelStride,
+            image.width,
+            image.height,
+        )
+        val (sourceData, sourceWidth, sourceHeight) = rotateYPlane(
+            compactY,
+            image.width,
+            image.height,
+            imageProxy.imageInfo.rotationDegrees,
+        )
+        return decodeQrCodesFromYPlane(sourceData, sourceWidth, sourceHeight)
+    }
+
+    private fun compactYPlane(
+        buffer: ByteBuffer,
+        rowStride: Int,
+        pixelStride: Int,
+        width: Int,
+        height: Int,
+    ): ByteArray {
+        val source = buffer.duplicate()
+        source.rewind()
+        if (rowStride == width && pixelStride == 1) {
+            return ByteArray(width * height).also { source.get(it) }
+        }
+
+        val data = ByteArray(width * height)
+        var outputOffset = 0
+        for (row in 0 until height) {
+            val rowOffset = row * rowStride
+            for (column in 0 until width) {
+                data[outputOffset++] = source.get(rowOffset + column * pixelStride)
+            }
+        }
+        return data
+    }
+
+    private fun rotateYPlane(
+        data: ByteArray,
+        width: Int,
+        height: Int,
+        rotationDegrees: Int,
+    ): Triple<ByteArray, Int, Int> {
+        return when (rotationDegrees) {
+            90 -> {
+                val rotated = ByteArray(data.size)
+                for (y in 0 until height) {
+                    for (x in 0 until width) {
+                        rotated[x * height + height - y - 1] = data[x + y * width]
+                    }
+                }
+                Triple(rotated, height, width)
+            }
+            180 -> {
+                val rotated = ByteArray(data.size)
+                for (y in 0 until height) {
+                    for (x in 0 until width) {
+                        rotated[(height - y - 1) * width + width - x - 1] = data[x + y * width]
+                    }
+                }
+                Triple(rotated, width, height)
+            }
+            270 -> {
+                val rotated = ByteArray(data.size)
+                for (y in 0 until height) {
+                    for (x in 0 until width) {
+                        rotated[(width - x - 1) * height + y] = data[x + y * width]
+                    }
+                }
+                Triple(rotated, height, width)
+            }
+            else -> Triple(data, width, height)
+        }
+    }
+
+    private fun decodeQrCodesFromYPlane(data: ByteArray, width: Int, height: Int): List<String> {
+        val results = linkedSetOf<String>()
+        scanRects(width, height).forEach { rect ->
+            val source = PlanarYUVLuminanceSource(
+                data,
+                width,
+                height,
+                rect.left,
+                rect.top,
+                rect.width,
+                rect.height,
+                false,
+            )
+            decodeLiveQrSource(source).forEach { result ->
+                result.text?.let { results.add(it) }
+            }
+        }
+        return results.toList()
+    }
+
+    private fun decodeQrCodesFromBitmap(bitmap: Bitmap): List<String> {
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        val source = RGBLuminanceSource(bitmap.width, bitmap.height, pixels)
+        return decodeQrSource(source).mapNotNull { it.text }.distinct()
+    }
+
+    private data class ScanRect(
+        val left: Int,
+        val top: Int,
+        val width: Int,
+        val height: Int,
+    )
+
+    private fun scanRects(width: Int, height: Int): List<ScanRect> {
+        val rects = mutableListOf<ScanRect>()
+        fun add(left: Int, top: Int, rectWidth: Int, rectHeight: Int) {
+            val safeLeft = left.coerceIn(0, width - 1)
+            val safeTop = top.coerceIn(0, height - 1)
+            val safeWidth = rectWidth.coerceAtMost(width - safeLeft)
+            val safeHeight = rectHeight.coerceAtMost(height - safeTop)
+            if (safeWidth > 0 && safeHeight > 0) {
+                rects.add(ScanRect(safeLeft, safeTop, safeWidth, safeHeight))
+            }
+        }
+
+        val square = minOf(width, height)
+        listOf(94, 82, 70).forEach { percent ->
+            val side = square * percent / 100
+            add((width - side) / 2, (height - side) / 2, side, side)
+        }
+
+        add(0, 0, width, height)
+
+        return rects
+    }
+
+    private fun decodeLiveQrSource(source: LuminanceSource): List<Result> {
+        val hints = qrDecodeHints()
+        runCatching {
+            return listOf(QRCodeReader().decode(BinaryBitmap(HybridBinarizer(source)), hints))
+        }
+        runCatching {
+            return listOf(QRCodeReader().decode(BinaryBitmap(HybridBinarizer(InvertedLuminanceSource(source))), hints))
+        }
+        return emptyList()
+    }
+
+    private fun decodeQrSource(source: LuminanceSource): List<Result> {
+        val hints = qrDecodeHints()
+        val bitmap = BinaryBitmap(HybridBinarizer(source))
+        val results = mutableListOf<Result>()
+        runCatching {
+            results.addAll(QRCodeMultiReader().decodeMultiple(bitmap, hints))
+        }
+        runCatching {
+            results.addAll(GenericMultipleBarcodeReader(QRCodeReader()).decodeMultiple(bitmap, hints))
+        }
+        runCatching {
+            results.add(QRCodeReader().decode(bitmap, hints))
+        }
+        return results
+    }
+
+    private fun qrDecodeHints(): Map<DecodeHintType, Any> {
+        return mapOf(
+            DecodeHintType.TRY_HARDER to true,
+            DecodeHintType.POSSIBLE_FORMATS to EnumSet.of(BarcodeFormat.QR_CODE),
+        )
     }
 
     /**
      * 释放相机
      */
     private fun releaseCamera() {
-        cameraScan.release()
+        cameraProvider?.unbindAll()
+        cameraProvider = null
+        camera = null
+        analyzerExecutor.shutdown()
     }
 
     /**
      * 切换闪光灯状态（开启/关闭）
      */
     protected fun toggleTorchState() {
-        val isTorch = cameraScan.isTorchEnabled
-        cameraScan.enableTorch(!isTorch)
+        val isTorch = camera?.cameraInfo?.torchState?.value == androidx.camera.core.TorchState.ON
+        camera?.cameraControl?.enableTorch(!isTorch)
         binding.ivFlashlight.isSelected = !isTorch
     }
 
@@ -209,10 +506,7 @@ class ScannerActivity : ThemedActivity(),
      * @param grantResults
      */
     fun requestCameraPermissionResult(permissions: Array<String>, grantResults: IntArray) {
-        if (PermissionUtils.requestPermissionsResult(
-                Manifest.permission.CAMERA, permissions, grantResults
-            )
-        ) {
+        if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             startCamera()
         } else {
             finish()

@@ -29,4 +29,8 @@ class OutboundPreference
         return super.getSummary()
     }
 
+    fun postUpdate() {
+        notifyChanged()
+    }
+
 }

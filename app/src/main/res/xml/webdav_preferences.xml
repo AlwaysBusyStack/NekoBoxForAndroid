@@ -3,24 +3,28 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <EditTextPreference
+        android:icon="@drawable/ic_file_cloud_queue"
         android:key="webdavServer"
         android:title="@string/webdav_server"
         android:singleLine="true"
         android:summary="%s" />
 
     <EditTextPreference
+        android:icon="@drawable/ic_baseline_person_24"
         android:key="webdavUsername"
         android:title="@string/webdav_username"
         android:singleLine="true"
         android:summary="%s" />
 
     <EditTextPreference
+        android:icon="@drawable/ic_settings_password"
         android:key="webdavPassword"
         android:title="@string/webdav_password"
         android:singleLine="true"
         app:dialogLayout="@layout/layout_password_dialog" />
 
     <EditTextPreference
+        android:icon="@drawable/ic_baseline_folder_open_24"
         android:key="webdavPath"
         android:title="@string/webdav_path"
         android:singleLine="true"
@@ -28,6 +32,7 @@
         android:summary="%s" />
 
     <Preference
+        android:icon="@drawable/ic_baseline_cast_connected_24"
         android:key="webdavTest"
         android:title="@string/webdav_test" />
 

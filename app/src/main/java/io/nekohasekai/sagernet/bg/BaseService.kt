@@ -4,17 +4,19 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.*
 import android.app.ActivityManager
 import android.widget.Toast
 import io.nekohasekai.sagernet.Action
-import io.nekohasekai.sagernet.BootReceiver
 import io.nekohasekai.sagernet.R
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.aidl.ISagerNetService
 import io.nekohasekai.sagernet.aidl.ISagerNetServiceCallback
 import io.nekohasekai.sagernet.bg.proto.ProxyInstance
 import io.nekohasekai.sagernet.database.DataStore
+import io.nekohasekai.sagernet.database.RuleEntity
 import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.ktx.*
 import io.nekohasekai.sagernet.plugin.PluginManager
@@ -26,6 +28,8 @@ import libcore.Libcore
 import moe.matsuri.nb4a.Protocols
 import moe.matsuri.nb4a.utils.Util
 import java.net.UnknownHostException
+
+private const val NETWORK_RECOVERY_DEBOUNCE_MS = 1_000L
 
 class BaseService {
 
@@ -46,6 +50,7 @@ class BaseService {
         var state = State.Stopped
         var proxy: ProxyInstance? = null
         var notification: ServiceNotification? = null
+        var networkRecoveryJob: Job? = null
 
         val receiver = broadcastReceiver { ctx, intent ->
             when (intent.action) {
@@ -58,15 +63,16 @@ class BaseService {
                             proxy?.box?.sleep()
                         } else {
                             proxy?.box?.wake()
-                            if (DataStore.wakeResetConnections) {
-                                Libcore.resetAllConnections(true)
-                            }
+                            service.handleConnectionRecovery(
+                                reconnect = DataStore.wakeReconnect,
+                                reset = DataStore.wakeResetConnections
+                            )
                         }
                     }
                 }
 
                 Action.RESET_UPSTREAM_CONNECTIONS -> runOnDefaultDispatcher {
-                    Libcore.resetAllConnections(true)
+                    service.resetCoreNetwork()
                     runOnMainDispatcher {
                         Util.collapseStatusBar(ctx)
                         Toast.makeText(ctx, "Reset upstream connections done", Toast.LENGTH_SHORT)
@@ -81,6 +87,7 @@ class BaseService {
 
         val binder = Binder(this)
         var connectingJob: Job? = null
+        val lifecycleMutex = Mutex()
 
         fun changeState(s: State, msg: String? = null) {
             if (state == s && msg == null) return
@@ -146,16 +153,56 @@ class BaseService {
             }
             try {
                 return Libcore.urlTest(
-                    data!!.proxy!!.box, DataStore.connectionTestURL, DataStore.connectionTestTimeout
+                    data!!.proxy!!.box,
+                    DataStore.connectionTestURL,
+                    DataStore.connectionTestTimeout,
+                    DataStore.profileTestType
                 )
             } catch (e: Exception) {
                 error(Protocols.genFriendlyMsg(e.readableMessage))
             }
         }
 
+        override fun isCoreProfilingRunning(): Boolean = Libcore.coreProfilingRunning()
+
+        override fun hasCoreProfilerSnapshot(): Boolean = Libcore.hasCoreProfilerSnapshot()
+
+        override fun performLibcoreGcSweep() {
+            if (data?.proxy?.isInitialized() != true) {
+                error("Service is not running")
+            }
+            Libcore.performLibcoreGCSweep()
+        }
+
+        override fun startCoreProfiling() {
+            if (data?.proxy?.isInitialized() != true) {
+                error("Core is not started yet")
+            }
+            Libcore.startCoreProfiling()
+        }
+
+        override fun stopCoreProfiling() {
+            Libcore.stopCoreProfiling()
+        }
+
+        override fun writeCoreProfilerSnapshot(outputDir: String) {
+            if (data?.proxy?.isInitialized() != true && !Libcore.hasCoreProfilerSnapshot()) {
+                error("Core is not started yet")
+            }
+            Libcore.writeCoreProfilerSnapshot(outputDir)
+        }
+
+        override fun deleteCoreProfilerSnapshot() {
+            Libcore.deleteCoreProfilerSnapshot()
+        }
+
         fun stateChanged(s: State, msg: String?) = launch {
             val profileName = profileName
             broadcast { it.stateChanged(s.ordinal, profileName, msg) }
+        }
+
+        fun masterDnsVPNResolverProgress(found: Int, total: Int, ready: Boolean) = launch {
+            broadcast { it.cbMasterDnsVPNResolverProgress(found, total, ready) }
         }
 
         fun missingPlugin(pluginName: String) = launch {
@@ -187,7 +234,16 @@ class BaseService {
                 val tag = data.proxy!!.config.profileTagMap[ent?.id] ?: ""
                 if (tag.isNotBlank() && ent != null) {
                     // select from GUI
-                    data.proxy!!.box.selectOutbound(tag)
+                    val proxy = data.proxy!!
+                    runBlocking {
+                        proxy.looper?.pauseUpdates {
+                            proxy.box.selectOutbound(tag)
+                            resetCoreNetwork()
+                        } ?: run {
+                            proxy.box.selectOutbound(tag)
+                            resetCoreNetwork()
+                        }
+                    }
                     // or select from webui
                     // => selector_OnProxySelected
                 }
@@ -216,14 +272,76 @@ class BaseService {
             data.proxy!!.launch()
         }
 
+        fun hasActiveWifiRules(): Boolean {
+            return SagerDatabase.rulesDao.enabledRules().any { RuleEntity.hasActiveWifiIdentity(it) }
+        }
+
         fun startRunner() {
             this as Context
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(Intent(this, javaClass))
             else startService(Intent(this, javaClass))
         }
 
+        /**
+         * Some devices throttle service/native cleanup aggressively while running on battery.
+         * Hold a short, local PARTIAL_WAKE_LOCK only for the disconnect/reconnect critical section
+         * so VpnService/tun/core teardown is not delayed by idle CPU scheduling.
+         */
+        private inline fun <T> withStopWakeLock(block: () -> T): T {
+            this as Context
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val stopWakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "$packageName:VpnServiceStop"
+            ).apply {
+                setReferenceCounted(false)
+                acquire(15_000L)
+            }
+            return try {
+                block()
+            } finally {
+                if (stopWakeLock.isHeld) {
+                    runCatching { stopWakeLock.release() }.onFailure { Logs.w(it) }
+                }
+            }
+        }
+
+        fun removeForegroundNotification() {
+            this as Service
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(Service.STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+        }
+
         fun killProcesses() {
-            data.proxy?.close()
+            data.networkRecoveryJob?.cancel()
+            data.networkRecoveryJob = null
+            SagerNet.application.nativeInterface.unregisterWifiStateListener()
+            SagerNet.application.nativeInterface.setWifiRuleMonitoringEnabled(false)
+            data.proxy?.let { proxy ->
+                runCatching {
+                    runBlocking {
+                        proxy.looper?.stop()
+                        proxy.looper = null
+                    }
+                    runCatching {
+                        if (Libcore.coreProfilingRunning()) {
+                            Libcore.stopCoreProfiling()
+                        }
+                    }.onFailure { Logs.w(it) }
+                    if (proxy.isInitialized()) {
+                        proxy.box.closeTimeout(3000)
+                    } else {
+                        proxy.close()
+                    }
+                }.onFailure {
+                    Logs.w(it)
+                    runCatching { proxy.close() }.onFailure { closeError -> Logs.w(closeError) }
+                }
+            }
             wakeLock?.apply {
                 release()
                 wakeLock = null
@@ -233,10 +351,21 @@ class BaseService {
             }
         }
 
-        fun stopRunner(restart: Boolean = false, msg: String? = null) {
-            DataStore.baseService = null
-            DataStore.vpnService = null
+        fun resetCoreNetwork() {
+            val proxy = data.proxy
+            if (proxy != null && proxy.isInitialized()) {
+                runCatching {
+                    proxy.box.resetNetwork()
+                }.onFailure {
+                    Logs.w(it)
+                    Libcore.resetAllConnections(true)
+                }
+                return
+            }
+            Libcore.resetAllConnections(true)
+        }
 
+        fun stopRunner(restart: Boolean = false, msg: String? = null) {
             if (data.state == State.Stopping) return
             data.notification?.destroy()
             data.notification = null
@@ -245,22 +374,45 @@ class BaseService {
             data.changeState(State.Stopping)
 
             runOnMainDispatcher {
-                data.connectingJob?.cancelAndJoin() // ensure stop connecting first
-                // we use a coroutineScope here to allow clean-up in parallel
-                coroutineScope {
-                    killProcesses()
+                val currentJob = currentCoroutineContext()[Job]
+                val connectingJob = data.connectingJob
+                if (connectingJob != null && connectingJob != currentJob) {
+                    connectingJob.cancelAndJoin() // ensure stop connecting first
+                }
+
+                data.lifecycleMutex.withLock {
+                    // Remove the foreground notification promptly, but keep the service alive until
+                    // native/VPN cleanup finishes. This makes the visible disconnect state immediate
+                    // while avoiding a new start racing the old tun/core instance.
+                    runCatching { removeForegroundNotification() }.onFailure { Logs.w(it) }
+
+                    withContext(Dispatchers.IO) {
+                        withStopWakeLock {
+                            killProcesses()
+                        }
+                    }
+
                     val data = data
                     if (data.closeReceiverRegistered) {
                         unregisterReceiver(data.receiver)
                         data.closeReceiverRegistered = false
                     }
                     data.proxy = null
+
+                    DataStore.baseService = null
+                    DataStore.vpnService = null
+
+                    // change the state
+                    data.changeState(State.Stopped, msg)
                 }
 
-                // change the state
-                data.changeState(State.Stopped, msg)
                 // stop the service if nothing has bound to it
-                if (restart) startRunner() else {
+                if (restart) {
+                    // Give Android's VpnService/tun teardown a short chance to settle before creating
+                    // a new tun instance. This avoids click-to-reconnect races on some devices.
+                    delay(300)
+                    startRunner()
+                } else {
                     stopSelf()
                 }
             }
@@ -270,26 +422,74 @@ class BaseService {
             // TODO NEW save app stats?
         }
 
+        fun handleConnectionRecovery(reconnect: Boolean, reset: Boolean) {
+            if (reconnect && data.state.canStop) {
+                DataStore.pendingResetConnectionsAfterReconnect = reset
+                stopRunner(true)
+                return
+            }
+            if (reset) {
+                resetCoreNetwork()
+            }
+        }
+
+        fun isVpnNetwork(network: Network?): Boolean {
+            if (network == null) return false
+            val capabilities = SagerNet.connectivity.getNetworkCapabilities(network)
+            if (capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true) {
+                return true
+            }
+            return SagerNet.connectivity.getLinkProperties(network)?.interfaceName?.startsWith("tun") == true
+        }
+
         // networks
         var upstreamInterfaceName: String?
 
         suspend fun preInit() {
-            DefaultNetworkListener.start(this) {
-                SagerNet.connectivity.getLinkProperties(it)?.also { link ->
-                    SagerNet.underlyingNetwork = it
-                    DataStore.vpnService?.updateUnderlyingNetwork()
-                    //
-                    val oldName = upstreamInterfaceName
-                    if (oldName != link.interfaceName) {
-                        upstreamInterfaceName = link.interfaceName
-                    }
-                    if (oldName != null && upstreamInterfaceName != null && oldName != upstreamInterfaceName) {
-                        Logs.d("Network changed: $oldName -> $upstreamInterfaceName")
-                        if (DataStore.networkChangeResetConnections) {
-                            Libcore.resetAllConnections(true)
-                        }
+            val networkChangeRecoveryPolicy = NetworkChangeRecoveryPolicy()
+
+            fun handleNetworkUpdate(network: Network?) {
+                SagerNet.underlyingNetwork = network
+                SagerNet.application.nativeInterface.syncNetworkState(network)
+                DataStore.vpnService?.updateUnderlyingNetwork()
+                val link = network?.let { current -> SagerNet.connectivity.getLinkProperties(current) }
+                val currentName = link?.interfaceName
+                upstreamInterfaceName = currentName
+                val decision = networkChangeRecoveryPolicy.onNetworkChanged(
+                    interfaceName = currentName,
+                    isVpnNetwork = isVpnNetwork(network),
+                    reconnectEnabled = DataStore.networkChangeReconnect,
+                    resetEnabled = DataStore.networkChangeResetConnections,
+                )
+                if (decision.reconnect || decision.reset) {
+                    Logs.d("Network changed: ${decision.oldInterfaceName} -> ${decision.newInterfaceName}")
+                    data.networkRecoveryJob?.cancel()
+                    data.networkRecoveryJob = runOnDefaultDispatcher {
+                        delay(NETWORK_RECOVERY_DEBOUNCE_MS)
+                        if (!data.state.started) return@runOnDefaultDispatcher
+                        handleConnectionRecovery(
+                            reconnect = decision.reconnect,
+                            reset = decision.reset
+                        )
                     }
                 }
+                if (decision.ignoredReconnectForVpn) {
+                    Logs.d(
+                        "Ignore VPN network change for reconnect: " +
+                            "${decision.oldInterfaceName} -> ${decision.newInterfaceName}"
+                    )
+                }
+            }
+
+            DefaultNetworkListener.start(this) {
+                handleNetworkUpdate(it)
+            }
+            runCatching {
+                DefaultNetworkListener.get()
+            }.onSuccess { network ->
+                handleNetworkUpdate(network)
+            }.onFailure { error ->
+                Logs.w("Unable to fetch initial default network: ${error.message}")
             }
         }
 
@@ -325,7 +525,9 @@ class BaseService {
 
             val proxy = ProxyInstance(profile, this)
             data.proxy = proxy
-            BootReceiver.enabled = DataStore.persistAcrossReboot
+            runOnDefaultDispatcher {
+                SubscriptionUpdater.syncBootReceiverEnabled()
+            }
             if (!data.closeReceiverRegistered) {
                 val filter = IntentFilter().apply {
                     addAction(Action.RELOAD)
@@ -357,44 +559,76 @@ class BaseService {
             }
 
             data.changeState(State.Connecting)
-            runOnMainDispatcher {
-                try {
-                    data.notification = createNotification(ServiceNotification.genTitle(profile))
+            data.connectingJob = runOnDefaultDispatcher {
+                data.lifecycleMutex.withLock {
+                    try {
+                        withContext(Dispatchers.Main.immediate) {
+                            data.notification = createNotification(ServiceNotification.genTitle(profile))
+                        }
 
-                    Executable.killAll()    // clean up old processes
-                    preInit()
-                    proxy.init()
-                    DataStore.currentProfile = profile.id
+                        Executable.killAll()    // clean up old processes
+                        val hasActiveWifiRules = hasActiveWifiRules()
+                        SagerNet.application.nativeInterface.setWifiRuleMonitoringEnabled(hasActiveWifiRules)
+                        SagerNet.application.nativeInterface.unregisterWifiStateListener()
+                        preInit()
+                        proxy.init()
+                        if (hasActiveWifiRules) {
+                            SagerNet.application.nativeInterface.registerWifiStateListener()
+                            SagerNet.application.nativeInterface.notifyWifiStateChanged("post-init")
+                        }
+                        DataStore.currentProfile = profile.id
 
-                    proxy.processes = GuardedProcessPool {
-                        Logs.w(it)
-                        stopRunner(false, it.readableMessage)
+                        proxy.processes = GuardedProcessPool {
+                            Logs.w(it)
+                            stopRunner(false, it.readableMessage)
+                        }
+
+                        startProcesses()
+                        if (DataStore.enableCoreProfiling) {
+                            Libcore.startCoreProfiling()
+                        }
+                        data.changeState(State.Connected)
+                        SagerNet.application.nativeInterface.maybeShowRedactedWifiToastOnConnect()
+
+                        lateInit()
+                        if (DataStore.pendingResetConnectionsAfterReconnect) {
+                            DataStore.pendingResetConnectionsAfterReconnect = false
+                            resetCoreNetwork()
+                        }
+                    } catch (_: CancellationException) { // if the job was cancelled, it is canceller's responsibility to call stopRunner
+                    } catch (_: UnknownHostException) {
+                        stopRunner(false, getString(R.string.invalid_server))
+                    } catch (e: PluginManager.PluginNotFoundException) {
+                        withContext(Dispatchers.Main.immediate) {
+                            Toast.makeText(this@Interface, e.readableMessage, Toast.LENGTH_SHORT).show()
+                        }
+                        Logs.w(e)
+                        data.binder.missingPlugin(e.plugin)
+                        stopRunner(false, null)
+                    } catch (exc: Throwable) {
+                        if (exc.readableMessage.contains("no working DNS resolvers found", ignoreCase = true)) {
+                            withContext(Dispatchers.Main.immediate) {
+                                Toast.makeText(
+                                    this@Interface,
+                                    R.string.masterdnsvpn_no_working_dns,
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                            stopRunner(false, null)
+                            return@withLock
+                        }
+                        if (exc.javaClass.name.endsWith("proxyerror")) {
+                            // error from golang
+                            Logs.w(exc.readableMessage)
+                        } else {
+                            Logs.w(exc)
+                        }
+                        stopRunner(
+                            false, "${getString(R.string.service_failed)}: ${exc.readableMessage}"
+                        )
+                    } finally {
+                        data.connectingJob = null
                     }
-
-                    startProcesses()
-                    data.changeState(State.Connected)
-
-                    lateInit()
-                } catch (_: CancellationException) { // if the job was cancelled, it is canceller's responsibility to call stopRunner
-                } catch (_: UnknownHostException) {
-                    stopRunner(false, getString(R.string.invalid_server))
-                } catch (e: PluginManager.PluginNotFoundException) {
-                    Toast.makeText(this@Interface, e.readableMessage, Toast.LENGTH_SHORT).show()
-                    Logs.w(e)
-                    data.binder.missingPlugin(e.plugin)
-                    stopRunner(false, null)
-                } catch (exc: Throwable) {
-                    if (exc.javaClass.name.endsWith("proxyerror")) {
-                        // error from golang
-                        Logs.w(exc.readableMessage)
-                    } else {
-                        Logs.w(exc)
-                    }
-                    stopRunner(
-                        false, "${getString(R.string.service_failed)}: ${exc.readableMessage}"
-                    )
-                } finally {
-                    data.connectingJob = null
                 }
             }
             return Service.START_NOT_STICKY
