@@ -70,6 +70,7 @@ class GroupSettingsActivity(
         DataStore.subscriptionFilterMode = subscription.filterMode
         DataStore.subscriptionFilterRegex = subscription.filterRegex
         DataStore.subscriptionHwidEnabled = subscription.hwidEnabled
+        DataStore.subscriptionHwidCustom = subscription.hwidCustom
         DataStore.subscriptionSpoofApp = subscription.spoofApp
     }
 
@@ -96,6 +97,7 @@ class GroupSettingsActivity(
                 filterMode = DataStore.subscriptionFilterMode
                 filterRegex = DataStore.subscriptionFilterRegex
                 hwidEnabled = DataStore.subscriptionHwidEnabled
+                hwidCustom = DataStore.subscriptionHwidCustom
                 spoofApp = DataStore.subscriptionSpoofApp
             }
         }
@@ -194,15 +196,19 @@ class GroupSettingsActivity(
 
         val subscriptionHwidEnabled =
             findPreference<MaterialSwitchPreference>(Key.SUBSCRIPTION_HWID_ENABLED)!!
+        val subscriptionHwidCustom =
+            findPreference<EditTextPreference>(Key.SUBSCRIPTION_HWID_CUSTOM)!!
         val subscriptionSpoofApp =
             findPreference<SimpleMenuPreference>(Key.SUBSCRIPTION_SPOOF_APP)!!
         val subscriptionUserAgent =
             findPreference<UserAgentPreference>(Key.SUBSCRIPTION_USER_AGENT)!!
 
+        subscriptionHwidCustom.isEnabled = subscriptionHwidEnabled.isChecked
         subscriptionSpoofApp.isEnabled = subscriptionHwidEnabled.isChecked
 
         subscriptionHwidEnabled.setOnPreferenceChangeListener { _, newValue ->
             val enabled = newValue as Boolean
+            subscriptionHwidCustom.isEnabled = enabled
             subscriptionSpoofApp.isEnabled = enabled
             if (!enabled) {
                 subscriptionUserAgent.text = ""

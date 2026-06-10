@@ -456,6 +456,7 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     var subscriptionFilterMode by profileCacheStore.stringToInt(Key.SUBSCRIPTION_FILTER_MODE) { 0 }
     var subscriptionFilterRegex by profileCacheStore.string(Key.SUBSCRIPTION_FILTER_REGEX)
     var subscriptionHwidEnabled by profileCacheStore.boolean(Key.SUBSCRIPTION_HWID_ENABLED)
+    var subscriptionHwidCustom by profileCacheStore.string(Key.SUBSCRIPTION_HWID_CUSTOM)
     var subscriptionSpoofApp by profileCacheStore.stringToInt(Key.SUBSCRIPTION_SPOOF_APP) { 0 }
 
     var rulesFirstCreate by profileCacheStore.boolean("rulesFirstCreate")

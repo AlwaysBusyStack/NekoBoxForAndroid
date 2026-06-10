@@ -503,6 +503,8 @@
     <string name="update_when_connected_only_sum">Prevent IP address leakage</string>
     <string name="hwid_support">HWID Support</string>
     <string name="hwid_support_sum">Sends this device\'s unique identifier during subscription update. Enable only when subscription provider doesn\'t allow subscriptions without HWID.</string>
+    <string name="hwid_custom">Custom HWID</string>
+    <string name="hwid_custom_sum">Override auto-generated HWID with a fixed value. Leave empty to use the device-derived HWID.</string>
     <string name="spoof_app">Spoof App</string>
     <string name="spoof_app_sum">Mimics another app\'s HWID logic. Use only if subscription provider restricts usage with a predefined apps list.</string>
     <string name="spoof_app_none">None</string>

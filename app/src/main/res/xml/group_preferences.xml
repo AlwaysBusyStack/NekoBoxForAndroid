@@ -103,6 +103,12 @@
             app:key="subscriptionHwidEnabled"
             app:summary="@string/hwid_support_sum"
             app:title="@string/hwid_support" />
+        <EditTextPreference
+            app:icon="@drawable/ic_baseline_fingerprint_24"
+            app:key="subscriptionHwidCustom"
+            app:title="@string/hwid_custom"
+            app:summary="@string/hwid_custom_sum"
+            app:useSimpleSummaryProvider="true" />
         <moe.matsuri.nb4a.ui.SimpleMenuPreference
             app:defaultValue="0"
             app:entries="@array/spoof_app_modes"

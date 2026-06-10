@@ -204,6 +204,7 @@ object Key {
     const val SUBSCRIPTION_FILTER_MODE = "subscriptionFilterMode"
     const val SUBSCRIPTION_FILTER_REGEX = "subscriptionFilterRegex"
     const val SUBSCRIPTION_HWID_ENABLED = "subscriptionHwidEnabled"
+    const val SUBSCRIPTION_HWID_CUSTOM = "subscriptionHwidCustom"
     const val SUBSCRIPTION_SPOOF_APP = "subscriptionSpoofApp"
 
     //

@@ -391,7 +391,9 @@ object RawUpdater : GroupUpdater() {
                     setUserAgent(subscription.customUserAgent.takeIf { it.isNotBlank() } ?: USER_AGENT)
                     if (subscription.hwidEnabled == true) {
                         val spoofApp = subscription.spoofApp ?: SpoofApp.NONE
-                        setHeader("X-Hwid", HwidGenerator.generate(app))
+                        val hwid = subscription.hwidCustom?.takeIf { it.isNotBlank() }
+                            ?: HwidGenerator.generate(app)
+                        setHeader("X-Hwid", hwid)
                         if (spoofApp != SpoofApp.V2RAY_TUN) {
                             setHeader("X-Device-Os", "Android")
                         }
